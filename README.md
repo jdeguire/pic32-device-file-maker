@@ -1,2 +1,13 @@
 # pic32-device-file-maker
 Generate device-specifc files for PIC32 and SAM device (ARM-only for now), like linker scripts and header files.
+
+This is sort of a port of my **generatePic32SpecificStuff** project. That project uses Java and is a plugin for
+MPLAB X to access its internal database. This project will not do that, but will instead ask you to tell it where
+the database is. If you have MPLAB X installed, look for a "packs" directory in its install location or in your
+user directory for a ".mchp_packs" directory.
+
+The other project was also quite concerned with maintaining a fair amount of compatibility with Microchip's
+files. This project is not going to be as concerned with that, at least to start. I have no plans to use these
+files with Microcip's XC32 compiler or Harmony framework, so there is not really a reason to worry abou it.
+This comes with the additional benefit of not having to worry as much about licenses and the legality of
+mimicing Microchip's code.
