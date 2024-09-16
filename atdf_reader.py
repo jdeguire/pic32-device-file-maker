@@ -62,7 +62,12 @@ from xml.etree.ElementTree import Element
 # Move these Device___ things into their own spot. I'll keep them here for now while I'm forming
 # them, but they really should be somewhere else.
 #
+# Should these all be grouped into a big "Device" structure?
+#
 # Maybe this DeviceArch one should be more specific and have methods to get a high-level class.
+#
+# Maybe don't even bother with this enum and just return a string for the arch-speicifc classes to
+# handle.
 #####
 class DeviceArch(Enum):
     '''An enum of high-level architecture types currently supported.
@@ -79,6 +84,15 @@ class DeviceArch(Enum):
     Unknown = 5
 
 @dataclass
+class ParameterValue:
+    '''A simple data structue containing general info about a device or peripheral. These will
+    usually end up being turned into C macros or enum values the user can reference.
+    '''
+    name: str
+    value: int
+    caption: str        # This is a comment to explain the paramter
+
+@dataclass
 class DeviceMemoryRegion:
     '''A data structure to represent a region of memory in the device.
 
@@ -88,6 +102,8 @@ class DeviceMemoryRegion:
     name: str
     start_addr: int
     size: int
+    type: str           # Is it flash, RAM, other IO, and so on.
+    page_size: int      # This appears to be non-zero for flash segments only
 
 
 @dataclass
@@ -103,13 +119,69 @@ class DeviceAddressSpace:
     id: str
     start_addr: int
     size: int
-    mem_regions: list[DeviceMemoryRegion] = field(default_factory=list[DeviceMemoryRegion])
+    mem_regions: list[DeviceMemoryRegion]
+
+@dataclass
+class PeripheralInstance:
+    '''A data structure to represent a single instance of a peripheral.
+
+    These are grouped together using peripheral groups. All instances in a group will have the same
+    registers, but of course they will be at difference memory addresses. Each instance will also
+    have its own set of parameter macros.
+    '''
+    name: str           # "ADC0" vs "ADC1" and so on
+    addr_space: str     # The address space in which this is located
+    offset: int         # The offset from the start of the address space
+    params: list[ParameterValue]
+
+@dataclass
+class RegisterField:
+    '''A data structure representing a single bitfield in a register.
+    '''
+    values: list[ParameterValue]    # Enum values for the possible values of this field
+
+@dataclass
+class PeripheralRegister:
+    '''A data structure to represent a single register in a peripheral.
+    '''
+    name: str
+    mode: str
+    offset: int                     # The offset from the start of the instance
+    size: int                       # Size in bytes
+    init_val: int                   # Initial value
+    caption: str                    # Description
+    fields: list[RegisterField]
+
+@dataclass
+class RegisterGroup:
+    '''A data structure to represent a set of registers grouped together in a peripheral.
+
+    Most peripherals have only a single group with the same name as the peripheral, but a few have
+    extra groups used to describe in-memory structures like DMA or CAN buffers.
+    '''
+    name: str
+    caption: str
+    offset: int         # Will usually be zero since the register offset is usually enough
+    count: int          # Used for some GPIO peripherals to create an array of register sets
+    modes: list[str]    # Used for SERCOM because registers change based on SPI vs I2C vs whatever
+    regs: list[PeripheralRegister]
+
+@dataclass
+class PeripheralGroup:
+    '''A data structure to represent a group of peripherals of the same type.
+    '''
+    name: str           # The name you would use for the peripheral, like "ADC" or "SERCOM"
+    id: str             # A unique ID used to distinguish, for example, different types of ADCs
+    version: str
+    instances: list[PeripheralInstance]
+    reg_groups: list[RegisterGroup]
 
 
 class AtdfReader:
     # These are relative to the root element, which points to the top-level node
     # "avr-tools-device-file".
     device_path: str = 'devices/device'
+    modules_path: str = 'modules'
 
 
     def __init__(self, atdf_path: Path) -> None:
@@ -120,9 +192,25 @@ class AtdfReader:
         methods in this class simply will not work properly. Like the main comment in this file
         says, you need to ensure that the files you are giving this class are really from Microhip.
         '''
-        self.path = atdf_path
+        self.path: Path = atdf_path
         self.tree = ET.parse(self.path)
-        self.root = self.tree.getroot()
+        self.root: Element = self.tree.getroot()
+
+
+    def get_str(e: Element, name: str, default: str = '') -> str:
+        '''A convenience method for reading a string attribute with a configurable defualt.
+        '''
+        return e.get(name, default)
+
+    def get_int(e: Element, name: str, default: int = 0) -> int:
+        '''A convenience method for reading an integer attribute with a configurable default.
+        '''
+        attr: str = e.get(name)
+        if attr is not None:
+            return int(attr, 0)     # last 0 tells int() to figure out base automatically
+        else:
+            return default
+
 
     def get_device_name(self) -> str:
         '''Get the name of the device like you would see on a datasheet.
@@ -132,8 +220,8 @@ class AtdfReader:
         '''
         element: Element = self.root.find(AtdfReader.device_path)
 
-        if element:
-            return element.get('name', default='')
+        if element is not None:
+            return AtdfReader.get_str(element, 'name')
         else:
             return ''
 
@@ -145,8 +233,8 @@ class AtdfReader:
         arch: DeviceArch = DeviceArch.Unknown
         element: Element = self.root.find(AtdfReader.device_path)
         
-        if element:
-            arch_str: str = element.get('architecture', default='').lower()
+        if element is not None:
+            arch_str: str = AtdfReader.get_str(element, 'architecture').lower()
 
             if arch_str.startswith('mips'):
                 arch = DeviceArch.Mips
@@ -162,26 +250,216 @@ class AtdfReader:
 
         return arch
     
+# TODO: Add a method to get the device family ("SAME", "PIC32CX", etc.)
+
     def get_device_memory(self) -> list[DeviceAddressSpace]:
         '''Get a list of address spaces in this device, which in turn may contain memory regions.
         '''
+        start_element: Element = self.root.find(AtdfReader.device_path + '/address-spaces')
+
+        if start_element is None:
+            return []
+
         memories: list[DeviceAddressSpace] = []
-        element: Element = self.root.find(AtdfReader.device_path + '/address-spaces')
 
-        if element:
-            for space in element.findall('address-space'):
-                # Start by getting the basic attributes for this address space.
-                addr_space = DeviceAddressSpace(id=space.get('id', ''),
-                                                start_addr=int(space.get('start', '0'), 0),
-                                                size=int(space.get('size', '0'), 0))
-                
-                # Get any memory segments this space has and add them to this address space's list.
-                for segment in space.findall('memory-segment'):
-                    region = DeviceMemoryRegion(name=segment.get('name', ''),
-                                                start_addr=int(segment.get('start', '0'), 0),
-                                                size=int(segment.get('size', '0'), 0))
-                    addr_space.mem_regions.append(region)
+        for space_element in start_element.findall('address-space'):
+            regions: list[DeviceMemoryRegion] = []
 
-                memories.append(addr_space)
+            # Get any memory segments this space.
+            for segment_element in space_element.findall('memory-segment'):
+                region = DeviceMemoryRegion(name = AtdfReader.get_str(segment_element, 'name'),
+                                            start_addr = AtdfReader.get_int(segment_element, 'start'),
+                                            size = AtdfReader.get_int(segment_element, 'size'),
+                                            type = AtdfReader.get_str(segment_element, 'type'),
+                                            page_size = AtdfReader.get_int(segment_element, 'pagesize'))
+                regions.append(region)
+
+            # Get the address space info and add the regions we found.
+            addr_space = DeviceAddressSpace(id = AtdfReader.get_str(space_element, 'id'),
+                                            start_addr = AtdfReader.get_int(space_element, 'start'),
+                                            size = AtdfReader.get_int(space_element, 'size'),
+                                            mem_regions = regions)
+            
+            memories.append(addr_space)
 
         return memories
+    
+    def get_device_parameters(self) -> list[ParameterValue]:
+        '''Get a list of parameters (C macros containing info) for the device itself.
+        '''
+        start_element: Element = self.root.find(AtdfReader.device_path + '/parameters')
+
+        if start_element is None:
+            return []
+
+        params: list[ParameterValue] = []
+
+        for param_element in start_element.findall('param'):
+            pv = ParameterValue(name = AtdfReader.get_str(param_element, 'name'),
+                                value = AtdfReader.get_int(param_element, 'value'),
+                                caption = AtdfReader.get_str(param_element, 'caption'))
+            params.append(pv)
+
+        return params
+
+    def get_peripheral_groups(self) -> list[PeripheralGroup]:
+        '''Get a list of the peripheral groups for the device.
+
+        Each peripheral group will contain one or more instances of the peripheral and the register
+        definitions used by all of the instances.
+        '''
+        start_element: Element = self.root.find(AtdfReader.device_path + '/peripherals')
+
+        if start_element is None:
+            return []
+
+        periph_groups: list[PeripheralGroup] = []
+
+        for module_element in start_element.findall('module'):
+            group = PeripheralGroup(name = AtdfReader.get_str(module_element, 'name'),
+                                    id = AtdfReader.get_str(module_element, 'id'),
+                                    version = AtdfReader.get_str(module_element, 'version'),
+                                    instances = self._get_peripheral_instances(module_element),
+                                    reg_groups = self._get_register_groups(module_element))
+            periph_groups.append(group)
+
+        return periph_groups
+    
+    def _get_peripheral_instances(self, module_element: Element) -> list[PeripheralInstance]:
+        '''Get a list of peripheral instances for the peripheral referred to by the given Element.
+
+        This is a private method. You should call 'get_peripheral_groups()' to get all the info
+        you will need for the device peripherals.
+        '''
+        instances: list[PeripheralInstance] = []
+
+        for inst_element in module_element.findall('instance'):
+            inst_name: str = AtdfReader.get_str(inst_element, 'name')
+            inst_addr_space: str = 'base'
+            inst_offset: int = 0
+            inst_params: list[ParameterValue] = []
+
+            reg_group: Element = inst_element.find('register-group')
+            if reg_group is not None:
+                inst_addr_space = AtdfReader.get_str(reg_group, 'address-space')
+                inst_offset = AtdfReader.get_int(reg_group, 'offset')
+
+            parameters: Element = inst_element.find('parameters')
+            if parameters is not None:
+                for param_element in parameters.findall('param'):
+                    pv = ParameterValue(name = AtdfReader.get_str(param_element, 'name'),
+                                        value = AtdfReader.get_int(param_element, 'value'),
+                                        caption = AtdfReader.get_str(param_element, 'caption'))
+                    inst_params.append(pv)
+
+            instance = PeripheralInstance(name = inst_name,
+                                          addr_space = inst_addr_space,
+                                          offset = inst_offset,
+                                          params = inst_params)
+            instances.append(instance)
+
+        return instances
+    
+    def _get_register_groups(self, periph_name: str) -> list[RegisterGroup]:
+        '''Get a list of register groups for the peripheral with the given name (ADC, CAN, etc.).
+
+        This is a private method. You should call 'get_peripheral_groups()' to get all the info
+        you will need for the device peripherals.
+        '''        
+        # First find the module element corresponding to our desired peripheral.
+        start_element: Element = self.root.find(AtdfReader.modules_path)        
+        module_element: Element = self._find_element_with_name_attr(start_element,
+                                                                    'module',
+                                                                    periph_name)
+        if module_element is None:
+            return []
+
+        register_groups: list[RegisterGroup] = []
+
+        group_elements: list[Element] = module_element.findall('register-group')
+        done_elements: list[Element] = []
+
+        # A register group can point at another group to say "I'm made up of 4 of this other
+        # group" for example. Find all groups that do this and handle those first. In practice,
+        # this seems to be very rare. The PORT peripheral in the SAME54 is an example.
+        for indirect_group in group_elements:
+            redirect_element: Element = indirect_group.find('register-group')
+
+            if redirect_element is not None:
+                real_name: str = AtdfReader.get_str(redirect_element, 'name')
+                real_group: Element = self._find_element_with_name_attr(module_element,
+                                                                        'register-group',
+                                                                        real_name)
+
+                group_modes: list[str] = []
+                for mode_element in real_group.findall('mode'):
+                    group_modes.append(AtdfReader.get_str(mode_element, 'name'))
+
+                rg = RegisterGroup(name = AtdfReader.get_str(indirect_group, 'name'),
+                                   caption = AtdfReader.get_str(indirect_group, 'caption'),
+                                   offset = AtdfReader.get_int(redirect_element, 'offset'),
+                                   count = AtdfReader.get_int(redirect_element, 'count'),
+                                   modes = group_modes,
+                                   regs = self._get_registers_from_group(real_group))
+                register_groups.append(rg)
+
+                done_elements.append(indirect_group)
+                done_elements.append(real_group)
+
+        # Any elements we already handled in the above loop need to be removed from the group list
+        # so we don't process them again.
+        for done in done_elements:
+            group_elements.remove(done)
+
+        # Now finish up by processing everything else.
+        for group in group_elements:
+            group_modes: list[str] = []
+            for mode_element in group.findall('mode'):
+                group_modes.append(AtdfReader.get_str(mode_element, 'name'))
+
+            rg = RegisterGroup(name = AtdfReader.get_str(group, 'name'),
+                               caption = AtdfReader.get_str(group, 'caption'),
+                               offset = 0,
+                               count = 0,
+                               modes = group_modes,
+                               regs = self._get_registers_from_group(group))
+            register_groups.append(rg)
+
+        return register_groups
+
+    def _get_registers_from_group(self, group_element: Element) -> list[PeripheralRegister]:
+        '''Get the register definitions for the peripheral referred to by the given Element.
+
+        This is a private method. You should call 'get_peripheral_groups()' to get all the info
+        you will need for the device peripherals.
+        '''
+        group_regs: list[PeripheralRegister] = []
+
+        for reg_element in group_element.findall('register'):
+            pass
+
+        return group_regs
+
+    # name: str
+    # mode: str
+    # offset: int                     # The offset from the start of the instance
+    # size: int                       # Size in bytes
+    # init_val: int                   # Initial value
+    # caption: str                    # Description
+    # fields: list[RegisterField]
+        return peripheral_regs
+        
+    def _find_element_with_name_attr(self, start_element: Element, 
+                                     subelement_name: str, value: str) -> Element:
+        '''Search under the starting element for the first subelement with a 'name' attribute that
+        matches the given attribute value or None if one could not be found.
+        '''
+        if start_element is None:
+            return None
+
+        for subelement in start_element.findall(subelement_name):
+            attr = subelement.get('name')
+            if attr is not None and attr == value:
+                return subelement
+            
+        return None
