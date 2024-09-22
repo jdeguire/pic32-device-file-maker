@@ -123,6 +123,20 @@ class DeviceAddressSpace:
     mem_regions: list[DeviceMemoryRegion]
 
 @dataclass
+class RegisterGroupReference:
+    '''A data structure to represent a reference to a register group.
+
+    Peripheral instances have a list of register groups they use. The list has the name used for
+    that instance, the name of the group as defined in the ATDF file, the address space in which
+    it is located, and the offset within that space. The register group definitions are elsewhere
+    and covered by the RegisterGroup type.
+    '''
+    instance_name: str
+    module_name: str
+    addr_space: str
+    offset: int
+
+@dataclass
 class PeripheralInstance:
     '''A data structure to represent a single instance of a peripheral.
 
@@ -131,8 +145,7 @@ class PeripheralInstance:
     have its own set of parameter macros.
     '''
     name: str           # "ADC0" vs "ADC1" and so on
-    addr_space: str     # The address space in which this is located
-    offset: int         # The offset from the start of the address space
+    reg_group_refs: list[RegisterGroupReference]
     params: list[ParameterValue]
 
 @dataclass
@@ -457,14 +470,15 @@ class AtdfReader:
 
         for inst_element in module_element.findall('instance'):
             inst_name: str = AtdfReader.get_str(inst_element, 'name')
-            inst_addr_space: str = 'base'
-            inst_offset: int = 0
+            inst_group_refs: list[RegisterGroupReference] = []
             inst_params: list[ParameterValue] = []
 
-            reg_group: Element = inst_element.find('register-group')
-            if reg_group is not None:
-                inst_addr_space = AtdfReader.get_str(reg_group, 'address-space')
-                inst_offset = AtdfReader.get_int(reg_group, 'offset')
+            for group_element in inst_element.findall('register-group'):
+                rgr = RegisterGroupReference(instance_name = AtdfReader.get_str(group_element, 'name'),
+                                             module_name = AtdfReader.get_str(group_element, 'name-in-module'),
+                                             addr_space = AtdfReader.get_str(group_element, 'address-space'),
+                                             offset = AtdfReader.get_int(group_element, 'offset'))
+                inst_group_refs.append(rgr)
 
             parameters: Element = inst_element.find('parameters')
             if parameters is not None:
@@ -475,8 +489,7 @@ class AtdfReader:
                     inst_params.append(pv)
 
             instance = PeripheralInstance(name = inst_name,
-                                          addr_space = inst_addr_space,
-                                          offset = inst_offset,
+                                          reg_group_refs = inst_group_refs,
                                           params = inst_params)
             instances.append(instance)
 
