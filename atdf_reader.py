@@ -1,7 +1,6 @@
 #! /usr/bin/env python3
 #
 # Copyright (c) 2024, Jesse DeGuire
-# All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without modification, are permitted
 # provided that the following conditions are met:
@@ -50,173 +49,10 @@
 # https://mypy.readthedocs.io/en/stable/cheat_sheet_py3.html
 
 
-from dataclasses import dataclass, field
-from enum import Enum
+from device_info import *
 from pathlib import Path
 import xml.etree.ElementTree as ET
 from xml.etree.ElementTree import Element
-
-
-#####
-# TODO:
-# Move these Device___ things into their own spot. I'll keep them here for now while I'm forming
-# them, but they really should be somewhere else.
-#
-# Should these all be grouped into a big "Device" structure?
-#
-# Maybe this DeviceArch one should be more specific and have methods to get a high-level class.
-#
-# Maybe don't even bother with this enum and just return a string for the arch-speicifc classes to
-# handle.
-#####
-class DeviceArch(Enum):
-    '''An enum of high-level architecture types currently supported.
-
-    This is not very granular, so would be more useful for getting you the class of device rather
-    than details. For example, this might indicates the device is some sort of Cortex-M device, but
-    not whether this is an M7, M4, etc.
-    '''
-    Mips = 0
-    CortexM = 1
-    CortexA = 2
-    RiscV32 = 3
-    RiscV64 = 4
-    Unknown = 5
-
-@dataclass
-class ParameterValue:
-    '''A simple data structue containing general info about a device or peripheral. These will
-    usually end up being turned into C macros or enum values the user can reference. Many elements
-    in this file consist of (name, value, caption), so this data structure is used for those.
-    '''
-    name: str
-    value: int
-    caption: str        # This is a comment to explain the parameter
-
-@dataclass
-class DeviceMemoryRegion:
-    '''A data structure to represent a region of memory in the device.
-
-    Memory regions are inside of address spaces and define regions of the space that are actually
-    used and what they are used for, such as flash, RAM, or peripherals.
-    '''
-    name: str
-    start_addr: int
-    size: int
-    type: str           # Is it flash, RAM, other IO, and so on.
-    page_size: int      # This appears to be non-zero for flash segments only
-
-
-@dataclass
-class DeviceAddressSpace:
-    '''A data structure to represent an address space in a device, usually for memory vs fuses.
-
-    A single address space can optionally have one or more memory regions in it. It is possible for
-    other device elements, like peripherals, to provide their memory locations relative to an
-    address space or memory region start, though whether that happens seems to depend on whether
-    the device is a MIPS or ARM device. This address space distinction is probably more useful for
-    Harvard Architecture devices with separate address spaces for flash and RAM.
-    '''
-    id: str
-    start_addr: int
-    size: int
-    mem_regions: list[DeviceMemoryRegion]
-
-@dataclass
-class RegisterGroupReference:
-    '''A data structure to represent a reference to a register group.
-
-    Peripheral instances have a list of register groups they use. The list has the name used for
-    that instance, the name of the group as defined in the ATDF file, the address space in which
-    it is located, and the offset within that space. The register group definitions are elsewhere
-    and covered by the RegisterGroup type.
-    '''
-    instance_name: str
-    module_name: str
-    addr_space: str
-    offset: int
-
-@dataclass
-class PeripheralInstance:
-    '''A data structure to represent a single instance of a peripheral.
-
-    These are grouped together using peripheral groups. All instances in a group will have the same
-    registers, but of course they will be at difference memory addresses. Each instance will also
-    have its own set of parameter macros.
-    '''
-    name: str           # "ADC0" vs "ADC1" and so on
-    reg_group_refs: list[RegisterGroupReference]
-    params: list[ParameterValue]
-
-@dataclass
-class RegisterField:
-    '''A data structure representing a single bitfield in a register.
-    '''
-    name: str
-    caption: str
-    mask: int
-    values: list[ParameterValue]    # Enum values for the possible values of this field
-
-@dataclass
-class PeripheralRegister:
-    '''A data structure to represent a single register in a peripheral.
-    '''
-    name: str
-    mode: str
-    offset: int                     # The offset from the start of the instance
-    size: int                       # Size in bytes
-    init_val: int                   # Initial value
-    caption: str                    # Description
-    fields: list[RegisterField]
-
-@dataclass
-class RegisterGroup:
-    '''A data structure to represent a set of registers grouped together in a peripheral.
-
-    Most peripherals have only a single group with the same name as the peripheral, but a few have
-    extra groups used to describe in-memory structures like DMA or CAN buffers.
-    '''
-    name: str
-    caption: str
-    offset: int         # Will usually be zero since the register offset is usually enough
-    count: int          # Used for some GPIO peripherals to create an array of register sets
-    modes: list[str]    # Used for SERCOM because registers change based on SPI vs I2C vs whatever
-    regs: list[PeripheralRegister]
-
-@dataclass
-class PeripheralGroup:
-    '''A data structure to represent a group of peripherals of the same type.
-    '''
-    name: str           # The name you would use for the peripheral, like "ADC" or "SERCOM"
-    id: str             # A unique ID used to distinguish, for example, different types of ADCs
-    version: str
-    instances: list[PeripheralInstance]
-    reg_groups: list[RegisterGroup]
-
-@dataclass
-class DeviceInterrupt:
-    '''A data structure to represent a single interrupt in a device.
-    '''
-    name: str
-    index: int
-    module_instance: str
-    caption: str
-
-@dataclass
-class DeviceEvent:
-    '''A data structure to represent a single event generator or user in a device.
-    '''
-    name: str
-    index: int
-    module_instance: str
-
-@dataclass
-class PropertyGroup:
-    '''A data structure to represent a group of additional properties for a device provided by the
-    XML file.
-    '''
-    name: str
-    properties: list[ParameterValue]
 
 
 class AtdfReader:
@@ -254,6 +90,20 @@ class AtdfReader:
             return default
 
 
+    def get_all_device_info(self) -> DeviceInfo:
+        '''Return a DeviceInfo structure with all of the info from below functions added to it.
+        '''
+        return DeviceInfo(name = self.get_device_name(),
+                          arch = self.get_device_arch(),
+                          family = self.get_device_family(),
+                          parameters = self.get_device_parameters(),
+                          property_groups = self.get_device_propertes(),
+                          memory = self.get_device_memory(),
+                          peripherals = self.get_peripheral_groups(),
+                          interrupts = self.get_interrupts(),
+                          event_generators = self.get_event_generators(),
+                          event_users = self.get_event_users())
+
     def get_device_name(self) -> str:
         '''Get the name of the device like you would see on a datasheet.
 
@@ -267,30 +117,17 @@ class AtdfReader:
         else:
             return ''
 
-    def get_device_arch(self) -> DeviceArch:
-        '''Get the high-level architecture of the device as a DeviceArch enum value.
+    def get_device_arch(self) -> str:
+        '''Get the architecture of the device as a lower-case string, such as "mips" or "cortex-m4".
 
-        This will return the "Unknown" value if the architecture is not recognized.
+        This will return an empty string if the architecture was not found.
         '''
-        arch: DeviceArch = DeviceArch.Unknown
         element: Element = self.root.find(AtdfReader.device_path)
         
         if element is not None:
-            arch_str: str = AtdfReader.get_str(element, 'architecture').lower()
-
-            if arch_str.startswith('mips'):
-                arch = DeviceArch.Mips
-            elif arch_str.startswith('cortex-m'):
-                arch = DeviceArch.CortexM
-            elif arch_str.startswith('cortex-a'):
-                arch = DeviceArch.CortexA
-            # Thsese RISC-V ones are just guesses for now. There are no files for RISC-V parts yet.
-            elif arch_str.startswith('risc-v32'):
-                arch = DeviceArch.RiscV32
-            elif arch_str.startswith('risc-v64'):
-                arch = DeviceArch.RiscV64
-
-        return arch
+            return AtdfReader.get_str(element, 'architecture').lower()
+        else:
+            return ''
     
     def get_device_family(self) -> str:
         '''Get the family of the device, such as "SAME", "PIC32CX", and so on.
@@ -580,6 +417,7 @@ class AtdfReader:
                                      mode = AtdfReader.get_str('modes'),
                                      offset = AtdfReader.get_int('offset'),
                                      size = AtdfReader.get_int('size'),
+                                     count = AtdfReader.get_int('count'),
                                      init_val = AtdfReader.get_int('initval'),
                                      caption = AtdfReader.get_str('caption'),
                                      fields = self._get_register_fields(module_element, reg_element))
