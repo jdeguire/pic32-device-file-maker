@@ -61,11 +61,12 @@
 #
 
 from atdf_reader import AtdfReader
+from file_makers import cortexm_linker_script_maker
 import os
 from pathlib import Path
+import shutil
 import tkinter
 import tkinter.filedialog
-#import xml.etree.ElementTree as ET
 
 
 def get_dir_from_dialog(title: str = None, mustexist: bool = True) -> str:
@@ -93,8 +94,18 @@ def get_atdf_paths_from_dir(packs_dir: str) -> list[Path]:
 
     return atdf_paths
 
+def remake_dirs(dir):
+    '''Remove and make the given directory and its subdirectories.
+    
+    Use this to remove build directories so that a clean build is done.'''
+    if os.path.exists(dir):
+        shutil.rmtree(dir)
+
+    os.makedirs(dir)
+
 
 if '__main__' == __name__:
+# TODO: Should I move DeviceInfo into the file_makers module?
 # TODO: Remove this hardcoded path when I'm doing testing.
 #    packs_dir = get_dir_from_dialog(title='Open packs directory')
     packs_dir = '/home/jesse/projects/packs'
@@ -104,10 +115,30 @@ if '__main__' == __name__:
     print(f'Got file path {packs_dir}')
     print('-----')
 
+    our_path = Path(os.path.abspath(os.path.dirname(__file__)))
+    output_path = our_path / 'pic32-device-files'
+    remake_dirs(output_path)
+
     atdf_paths = get_atdf_paths_from_dir(packs_dir)
     for p in atdf_paths:
         atdf = AtdfReader(p)
-        print(f'{p.as_posix()} -> {atdf.get_device_name()} : {atdf.get_device_arch()}')
-        print(f'{atdf.get_device_memory()}')
+
+# TODO: This is hardcoded to the PIC32CZ CA80 for now. Enable this for other stuff later.
+#        if atdf.get_device_arch().startswith('cortex-m'):
+        if atdf.get_device_name() == 'PIC32CZ8110CA80208'  or  atdf.get_device_name() == 'ATSAME54P20A':
+            devinfo = atdf.get_all_device_info()
+
+            # Linker script
+            #
+            ld_path = output_path / 'lib' / 'cortex-m' / 'proc'
+            ld_name = devinfo.name.lower() + '.ld'
+
+            os.makedirs(ld_path, exist_ok = True)
+
+            with open(ld_path / ld_name, 'w', encoding='utf-8', newline='\n') as ld:
+                cortexm_linker_script_maker.run(devinfo, ld)
+
+        else:
+            print(f'Device {atdf.get_device_name()} has unsupported arch {atdf.get_device_arch()}')
 
     exit(0)

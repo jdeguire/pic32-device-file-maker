@@ -24,25 +24,23 @@
 # DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
 # IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
 # OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# #####
-#
-# atdf_reader.py
-#
-# This is a class that will read an XML file assuming it is an Atmel/Microchip ".atdf" file. It
-# provides utility methods for accessing things like register and peripheral lists, getting CPU
-# information, and the memory layout of the device. Data will be parsed and wrapped into data
-# structures as needed. Allows us to handle different XML formats for device info, like Microchip's
-# previous EDC file format.
-#
-# This class uses the default XML parsers in Python, which are vulnerable to certain attacks
-# relying on XML entities referecing other entities multiple times. Specifically, the attacks are
-# called "Billion Laughs" and "Quadratic Blowup". Therefore, you should ensure that the packs files
-# you give to this module are really from Microchip and not some malicious user. See the info here:
-# https://docs.python.org/3/library/xml.html#module-xml. That page has a link to a package called
-# "defusedxml" you can use if you want to be safer. You should just need to get it from PIP and
-# update the import statement for ElementTree below and in other modules to use it.
-#
+
+'''atdf_reader.py
+
+This module contains the AtdfReader class to read an XML file assuming it is an Atmel/Microchip
+".atdf" file. It provides utility methods for accessing things like register and peripheral lists,
+getting CPU information, and the memory layout of the device. Data will be parsed and wrapped into
+data structures as needed. Allows us to handle different XML formats for device info, like
+Microchip's previous EDC file format.
+
+This class uses the default XML parsers in Python, which are vulnerable to certain attacks
+relying on XML entities referecing other entities multiple times. Specifically, the attacks are
+called "Billion Laughs" and "Quadratic Blowup". Therefore, you should ensure that the packs files
+you give to this module are really from Microchip and not some malicious user. See the info here:
+https://docs.python.org/3/library/xml.html#module-xml. That page has a link to a package called
+"defusedxml" you can use if you want to be safer. You should just need to get it from PIP and
+update the import statement for ElementTree below and in other modules to use it.
+'''
 
 # On another note, I'm using this class to try out the Python type hints. I don't know what I'm
 # doing, so I'm using the cheat sheet here for help: 
@@ -89,6 +87,17 @@ class AtdfReader:
         else:
             return default
 
+    def get_bool(e: Element, name: str, default: bool = False) -> int:
+        '''A convenience method for reading a Boolean attribute with a configurable default.
+        '''
+        attr: str = e.get(name)
+        if attr is not None:
+            if 'true' == attr.lower():
+                return True
+            else:
+                return False
+        else:
+            return default
 
     def get_all_device_info(self) -> DeviceInfo:
         '''Return a DeviceInfo structure with all of the info from below functions added to it.
@@ -160,7 +169,8 @@ class AtdfReader:
                                             start_addr = AtdfReader.get_int(segment_element, 'start'),
                                             size = AtdfReader.get_int(segment_element, 'size'),
                                             type = AtdfReader.get_str(segment_element, 'type'),
-                                            page_size = AtdfReader.get_int(segment_element, 'pagesize'))
+                                            page_size = AtdfReader.get_int(segment_element, 'pagesize'),
+                                            external = AtdfReader.get_bool(segment_element, 'external'))
                 regions.append(region)
 
             # Get the address space info and add the regions we found.
@@ -185,7 +195,7 @@ class AtdfReader:
 
         for param_element in start_element.findall('param'):
             pv = ParameterValue(name = AtdfReader.get_str(param_element, 'name'),
-                                value = AtdfReader.get_int(param_element, 'value'),
+                                value = AtdfReader.get_str(param_element, 'value'),
                                 caption = AtdfReader.get_str(param_element, 'caption'))
             params.append(pv)
 
@@ -288,7 +298,7 @@ class AtdfReader:
 
             for prop_element in propgroup_element.findall('property'):
                 pv = ParameterValue(name = AtdfReader.get_str(prop_element, 'name'),
-                                    value = AtdfReader.get_int(prop_element, 'value'),
+                                    value = AtdfReader.get_str(prop_element, 'value'),
                                     caption = AtdfReader.get_str(prop_element, 'caption'))
                 group_props.append(pv)
             
@@ -321,7 +331,7 @@ class AtdfReader:
             if parameters is not None:
                 for param_element in parameters.findall('param'):
                     pv = ParameterValue(name = AtdfReader.get_str(param_element, 'name'),
-                                        value = AtdfReader.get_int(param_element, 'value'),
+                                        value = AtdfReader.get_str(param_element, 'value'),
                                         caption = AtdfReader.get_str(param_element, 'caption'))
                     inst_params.append(pv)
 
@@ -449,7 +459,7 @@ class AtdfReader:
                 if values_element is not None:
                     for val_element in values_element.findall('value'):
                         val = ParameterValue(name = AtdfReader.get_str(val_element, 'name'),
-                                             value = AtdfReader.get_int(val_element, 'value'),
+                                             value = AtdfReader.get_str(val_element, 'value'),
                                              caption = AtdfReader.get_str(val_element, 'caption'))
                         values_list.append(val)
 

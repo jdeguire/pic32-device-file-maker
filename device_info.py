@@ -25,91 +25,90 @@
 # DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
 # IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
 # OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# #####
-#
-# device_info.py
-#
-# This is a big dataclass that will encapsulate all of the necessary information about a device that
-# was read from a device file. The device file class, like AtdfReader, will have methods to let you
-# read these individual structures and one to read out everything into the big DeviceInfo structure.
-#
-# This is a big structure, so here is a tree showing all of its members.
-#
-# name : str
-# arch : str
-# family : str
-# parameters : list[ParameterValue]
-#       name : str
-#       value : int
-#       caption : str
-# property_groups : list[PropertyGroup]
-#       name : str
-#       properties : list[ParameterValue]
-#               name : str
-#               value : int
-#               caption : str
-# memory : list[DeviceAddressSpace]
-#       id : str
-#       start_addr : int
-#       size : int
-#       mem_regions: list[DeviceMemoryRegion]
-#               name : str
-#               start_addr : int
-#               size : int
-#               type : str
-#               page_size : int
-# peripherals : list[PeripheralGroup]
-#       name : str
-#       id : str
-#       version : str
-#       instances : list[PeripheralInstance]
-#               name : str
-#               reg_group_refs : list[RegisterGroupReference]
-#                       instance_name : str
-#                       module_name : str
-#                       addr_space : str
-#                       offset : int
-#               params : list[ParameterValue]
-#                       name : str
-#                       value : int
-#                       caption : str
-#       reg_groups : list[RegisterGroup]
-#               name : str
-#               caption : str
-#               offset : int
-#               count : int
-#               modes : list[str]
-#               regs : list[PeripheralRegister]
-#                       name : str
-#                       mode : str
-#                       offset : int
-#                       size : int
-#                       count : int
-#                       init_val : int
-#                       caption : str
-#                       fields : list[RegisterField]
-#                               name : str
-#                               caption : str
-#                               mask : int
-#                               values : list[ParameterValue]
-#                                       name : str
-#                                       value : int
-#                                       caption : str
-# interrupts : list[DeviceInterrupt]
-#       name : str
-#       index : int
-#       module_instance : str
-#       caption : str
-# event_generators : list[DeviceEvent]
-#       name : str
-#       index : int
-#       module_instance : str
-# event_users : list[DeviceEvent]
-#       name : str
-#       index : int
-#       module_instance : str
 
+'''device_info.py
+
+This is a big dataclass that will encapsulate all of the necessary information about a device that
+was read from a device file. The device file class, like AtdfReader, will have methods to let you
+read these individual structures and one to read out everything into the big DeviceInfo structure.
+
+This is a big structure, so here is a tree showing all of its members.
+
+name : str
+arch : str
+family : str
+parameters : list[ParameterValue]
+      name : str
+      value : str
+      caption : str
+property_groups : list[PropertyGroup]
+      name : str
+      properties : list[ParameterValue]
+              name : str
+              value : str
+              caption : str
+memory : list[DeviceAddressSpace]
+      id : str
+      start_addr : int
+      size : int
+      mem_regions: list[DeviceMemoryRegion]
+              name : str
+              start_addr : int
+              size : int
+              type : str
+              page_size : int
+              external : bool
+peripherals : list[PeripheralGroup]
+      name : str
+      id : str
+      version : str
+      instances : list[PeripheralInstance]
+              name : str
+              reg_group_refs : list[RegisterGroupReference]
+                      instance_name : str
+                      module_name : str
+                      addr_space : str
+                      offset : int
+              params : list[ParameterValue]
+                      name : str
+                      value : str
+                      caption : str
+      reg_groups : list[RegisterGroup]
+              name : str
+              caption : str
+              offset : int
+              count : int
+              modes : list[str]
+              regs : list[PeripheralRegister]
+                      name : str
+                      mode : str
+                      offset : int
+                      size : int
+                      count : int
+                      init_val : int
+                      caption : str
+                      fields : list[RegisterField]
+                              name : str
+                              caption : str
+                              mask : int
+                              values : list[ParameterValue]
+                                      name : str
+                                      value : str
+                                      caption : str
+interrupts : list[DeviceInterrupt]
+      name : str
+      index : int
+      module_instance : str
+      caption : str
+event_generators : list[DeviceEvent]
+      name : str
+      index : int
+      module_instance : str
+event_users : list[DeviceEvent]
+      name : str
+      index : int
+      module_instance : str
+'''
 
 from dataclasses import dataclass
 
@@ -120,7 +119,7 @@ class ParameterValue:
     in this file consist of (name, value, caption), so this data structure is used for those.
     '''
     name: str
-    value: int
+    value: str
     caption: str        # This is a comment to explain the parameter
 
 @dataclass
@@ -135,6 +134,7 @@ class DeviceMemoryRegion:
     size: int
     type: str           # Is it flash, RAM, other IO, and so on.
     page_size: int      # This appears to be non-zero for flash segments only
+    external: bool      # Is this an external memory interface?
 
 
 @dataclass
