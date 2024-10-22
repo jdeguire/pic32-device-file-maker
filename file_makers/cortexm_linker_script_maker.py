@@ -27,7 +27,9 @@
 
 '''cortexm_linker_script_maker.py
 
-Contains a single public function to a GNU linker script file for a single Arm Cortex-M device.
+Contains a single public function to make a GNU linker script file for a single Arm Cortex-M device.
+This is based on the sample linker script found in Arm CMSIS 6 at
+https://github.com/ARM-software/CMSIS_6/blob/main/CMSIS/Core/Template/Device_M/Config/Device_gcc.ld.
 '''
 
 from device_info import *

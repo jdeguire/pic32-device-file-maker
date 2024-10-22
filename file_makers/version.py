@@ -1,11 +1,5 @@
 #! /usr/bin/env python3
 #
-# I guess this needs to be here to make this directory a package.
-# This needs to be a package so I can do relative imports bewteen files in there, I think.
-# This is new to me, so I'm figuring this out as I go along. Wheeeee!
-# This project is also a way to for me to learn more Python, so this is good to learn!
-#
-#
 # Copyright (c) 2024, Jesse DeGuire
 #
 # Redistribution and use in source and binary forms, with or without modification, are permitted
@@ -30,16 +24,20 @@
 # DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
 # IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
 # OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
 
-# If you want to do "from <package> import *", then you have to define __all__ in this file to
-# tell Python what modules you want it to grab. This is handy for ensuring that private files and
-# __init__.py are not imported.
-#
-# One could use some code here to grab whatever is in this package directory, but for now there is
-# no harm in just explicity naming the modules. Notice that the ".py" extension is NOT included.
+'''version.py
 
-__all__ = [
-    'cortexm_c_device_header_maker',
-    'cortexm_linker_script_maker'
-]
+This just contains a publicly-accessible version number for this package.
+
+This will use semantic versioning as given in https://semver.org/. Here is the summary:
+
+  Given a version number MAJOR.MINOR.PATCH, increment the:
+
+    MAJOR version when you make incompatible API changes
+    MINOR version when you add functionality in a backward compatible manner
+    PATCH version when you make backward compatible bug fixes
+
+  Additional labels for pre-release and build metadata are available as extensions to the MAJOR.MINOR.PATCH format.
+'''
+
+FILE_MAKER_VERSION: str = "0.0.1"

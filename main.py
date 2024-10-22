@@ -61,7 +61,7 @@
 #
 
 from atdf_reader import AtdfReader
-from file_makers import cortexm_linker_script_maker
+from file_makers import *
 import os
 from pathlib import Path
 import shutil
@@ -126,19 +126,33 @@ if '__main__' == __name__:
 # TODO: This is hardcoded to the PIC32CZ CA80 for now. Enable this for other stuff later.
 #        if atdf.get_device_arch().startswith('cortex-m'):
         if atdf.get_device_name() == 'PIC32CZ8110CA80208'  or  atdf.get_device_name() == 'ATSAME54P20A':
+            print(f'Creating files for device {atdf.get_device_name()} ({atdf.get_device_arch()})')
+
             devinfo = atdf.get_all_device_info()
 
             # Linker script
             #
             ld_path = output_path / 'lib' / 'cortex-m' / 'proc'
             ld_name = devinfo.name.lower() + '.ld'
+            ld_loc = ld_path / ld_name
 
             os.makedirs(ld_path, exist_ok = True)
 
-            with open(ld_path / ld_name, 'w', encoding='utf-8', newline='\n') as ld:
+            with open(ld_loc, 'w', encoding='utf-8', newline='\n') as ld:
                 cortexm_linker_script_maker.run(devinfo, ld)
 
-        else:
-            print(f'Device {atdf.get_device_name()} has unsupported arch {atdf.get_device_arch()}')
+            # C device-specifc header file
+            #
+            dev_header_path = output_path / 'include' / 'cortex-m' / 'proc'
+            dev_header_name = devinfo.name.lower() + '.h'
+            dev_header_loc = dev_header_path / dev_header_name
+
+            os.makedirs(dev_header_path, exist_ok = True)
+
+            with open(dev_header_loc, 'w', encoding='utf-8', newline='\n') as hdr:
+                cortexm_c_device_header_maker.run(devinfo, hdr)
+
+        # else:
+        #     print(f'Device {atdf.get_device_name()} has unsupported arch {atdf.get_device_arch()}')
 
     exit(0)
