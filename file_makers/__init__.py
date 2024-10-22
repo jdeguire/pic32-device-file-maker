@@ -39,6 +39,9 @@
 # One could use some code here to grab whatever is in this package directory, but for now there is
 # no harm in just explicity naming the modules. Notice that the ".py" extension is NOT included.
 
+from . import cortexm_c_device_header_maker
+from . import cortexm_linker_script_maker
+
 __all__ = [
     'cortexm_c_device_header_maker',
     'cortexm_linker_script_maker'

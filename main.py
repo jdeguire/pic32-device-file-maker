@@ -49,7 +49,8 @@
 # I do NOT guarantee that these files will be compatible with code that uses XC32. That is, things
 # like linker or register definitions may look different here versus what is provided with XC32.
 # Any similarity to Microchip's device files is either coincidental or the result of functional
-# requirements (register names are obviously going to match, for example).
+# requirements. This code, presumably like Microchip's/Atmel's code, uses Arm CMSIS 6 as a template
+# and so there will probably be a lot of similarities because of that.
 #
 # This project uses the default XML parsers in Python, which are vulnerable to certain attacks
 # relying on XML entities referecing other entities multiple times. Specifically, the attacks are
@@ -69,7 +70,7 @@ import tkinter
 import tkinter.filedialog
 
 
-def get_dir_from_dialog(title: str = None, mustexist: bool = True) -> str:
+def get_dir_from_dialog(title: str | None = None, mustexist: bool = True) -> str:
     '''Open a file dialog asking the user to open a directory, returning what the user selects or
     None if the dialog is cancelled.
 
@@ -152,6 +153,10 @@ if '__main__' == __name__:
             with open(dev_header_loc, 'w', encoding='utf-8', newline='\n') as hdr:
                 cortexm_c_device_header_maker.run(devinfo, hdr)
 
+
+            # TODO: Remove this escape hatch later. This is here to exit a little more quickly while testing.
+            if atdf.get_device_name() == 'ATSAME54P20A':
+                break
         # else:
         #     print(f'Device {atdf.get_device_name()} has unsupported arch {atdf.get_device_arch()}')
 

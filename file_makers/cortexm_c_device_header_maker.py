@@ -35,6 +35,7 @@ https://github.com/ARM-software/CMSIS_6/blob/main/CMSIS/Core/Template/Device_M/I
 
 from device_info import *
 from . import strings
+from . import version
 import textwrap
 from typing import IO
 
@@ -43,8 +44,9 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     '''Make a C header file for the given device assuming is a a PIC or SAM Cortex-M device.
     '''
     outfile.write(_get_file_prologue(devinfo.name))
-
-
+    outfile.write('\n')
+    outfile.write(_get_interrupt_enum(devinfo.interrupts))
+    outfile.write('\n\n')
     outfile.write(_get_file_epilogue(devinfo.name))
 
 
@@ -65,12 +67,42 @@ def _get_file_prologue(devname: str) -> str:
     prologue += f'#ifndef {devname.upper()}_H_\n'
     prologue += f'#define {devname.upper()}_H_\n\n'
 
+    # File version
+    # For now, make this the same as our version
+    fm_version: list[str] = version.FILE_MAKER_VERSION.split('.')
+    prologue += f'#define FILE_VERSION_STR   "{version.FILE_MAKER_VERSION}"\n'
+    prologue += f'#define FILE_VERSION_MAJOR ({fm_version[0]})\n'
+    prologue += f'#define FILE_VERSION_MINOR ({fm_version[1]})\n'
+    prologue += f'#define FILE_VERSION_PATCH ({fm_version[2]})\n\n'
+
     # extern "C"
     prologue += '#ifdef __cplusplus\n'
     prologue += 'extern "c" {\n'
-    prologue += '#endif\n\n'
+    prologue += '#endif\n'
 
     return prologue
+
+def _get_interrupt_enum(interrupts: list[DeviceInterrupt]) -> str:
+    '''Return a string containing a C enum that provides values for all of the device interrupts.
+    '''
+    enum_str: str = textwrap.dedent('''
+        /***********
+         * Interrupt Number Definition
+         ***********/
+
+        typedef enum IRQn
+        {
+        ''')
+
+    for interrupt in interrupts:
+        name = interrupt.name + '_IRQn'
+        index = interrupt.index
+        caption = interrupt.caption
+        enum_str += f'    {name :<24} = {index :>3}, /* {caption} */\n'
+
+    enum_str += '} IRQn_Type;\n'
+
+    return enum_str
 
 def _get_file_epilogue(devname: str) -> str:
     '''Return a string with the file epilogue, which is the stuff at the end of the file like

@@ -73,24 +73,27 @@ class AtdfReader:
         self.root: Element = self.tree.getroot()
 
 
+    @staticmethod
     def get_str(e: Element, name: str, default: str = '') -> str:
         '''A convenience method for reading a string attribute with a configurable defualt.
         '''
         return e.get(name, default)
 
+    @staticmethod
     def get_int(e: Element, name: str, default: int = 0) -> int:
         '''A convenience method for reading an integer attribute with a configurable default.
         '''
-        attr: str = e.get(name)
+        attr: str | None = e.get(name)
         if attr is not None:
             return int(attr, 0)     # last 0 tells int() to figure out base automatically
         else:
             return default
 
-    def get_bool(e: Element, name: str, default: bool = False) -> int:
+    @staticmethod
+    def get_bool(e: Element, name: str, default: bool = False) -> bool:
         '''A convenience method for reading a Boolean attribute with a configurable default.
         '''
-        attr: str = e.get(name)
+        attr: str | None = e.get(name)
         if attr is not None:
             if 'true' == attr.lower():
                 return True
@@ -119,7 +122,7 @@ class AtdfReader:
         This does not return the extra order codes for things like temperature rating or package
         type. For example, you would get back "ATSAME54P20A", not "ATSAME54P20A-CTU".
         '''
-        element: Element = self.root.find(AtdfReader.device_path)
+        element: Element | None = self.root.find(AtdfReader.device_path)
 
         if element is not None:
             return AtdfReader.get_str(element, 'name')
@@ -131,7 +134,7 @@ class AtdfReader:
 
         This will return an empty string if the architecture was not found.
         '''
-        element: Element = self.root.find(AtdfReader.device_path)
+        element: Element | None = self.root.find(AtdfReader.device_path)
         
         if element is not None:
             return AtdfReader.get_str(element, 'architecture').lower()
@@ -143,7 +146,7 @@ class AtdfReader:
 
         This will return an empty string if the family is not found.
         '''
-        element: Element = self.root.find(AtdfReader.device_path)
+        element: Element | None = self.root.find(AtdfReader.device_path)
 
         if element is not None:
             return AtdfReader.get_str(element, 'family')
@@ -153,7 +156,7 @@ class AtdfReader:
     def get_device_memory(self) -> list[DeviceAddressSpace]:
         '''Get a list of address spaces in this device, which in turn may contain memory regions.
         '''
-        start_element: Element = self.root.find(AtdfReader.device_path + '/address-spaces')
+        start_element: Element |None = self.root.find(AtdfReader.device_path + '/address-spaces')
 
         if start_element is None:
             return []
@@ -186,7 +189,7 @@ class AtdfReader:
     def get_device_parameters(self) -> list[ParameterValue]:
         '''Get a list of parameters (C macros containing info) for the device itself.
         '''
-        start_element: Element = self.root.find(AtdfReader.device_path + '/parameters')
+        start_element: Element | None = self.root.find(AtdfReader.device_path + '/parameters')
 
         if start_element is None:
             return []
@@ -207,7 +210,7 @@ class AtdfReader:
         Each peripheral group will contain one or more instances of the peripheral and the register
         definitions used by all of the instances.
         '''
-        start_element: Element = self.root.find(AtdfReader.device_path + '/peripherals')
+        start_element: Element | None = self.root.find(AtdfReader.device_path + '/peripherals')
 
         if start_element is None:
             return []
@@ -215,11 +218,12 @@ class AtdfReader:
         periph_groups: list[PeripheralGroup] = []
 
         for module_element in start_element.findall('module'):
-            group = PeripheralGroup(name = AtdfReader.get_str(module_element, 'name'),
+            module_name = AtdfReader.get_str(module_element, 'name')
+            group = PeripheralGroup(name = module_name,
                                     id = AtdfReader.get_str(module_element, 'id'),
                                     version = AtdfReader.get_str(module_element, 'version'),
                                     instances = self._get_peripheral_instances(module_element),
-                                    reg_groups = self._get_register_groups(module_element))
+                                    reg_groups = self._get_register_groups(module_name))
             periph_groups.append(group)
 
         return periph_groups
@@ -227,7 +231,7 @@ class AtdfReader:
     def get_interrupts(self) -> list[DeviceInterrupt]:
         '''Get a list of all interrupts on the device.
         '''
-        start_element: Element = self.root.find(AtdfReader.device_path + '/interrupts')
+        start_element: Element | None = self.root.find(AtdfReader.device_path + '/interrupts')
 
         if start_element is None:
             return []
@@ -246,7 +250,7 @@ class AtdfReader:
     def get_event_generators(self) -> list[DeviceEvent]:
         '''Get a list of event generators on the device.
         '''
-        start_element: Element = self.root.find(AtdfReader.device_path + '/events/generators')
+        start_element: Element | None = self.root.find(AtdfReader.device_path + '/events/generators')
 
         if start_element is None:
             return []
@@ -264,7 +268,7 @@ class AtdfReader:
     def get_event_users(self) -> list[DeviceEvent]:
         '''Get a list of event users on the device.
         '''
-        start_element: Element = self.root.find(AtdfReader.device_path + '/events/users')
+        start_element: Element | None = self.root.find(AtdfReader.device_path + '/events/users')
 
         if start_element is None:
             return []
@@ -285,7 +289,7 @@ class AtdfReader:
         These are similar to device parameters like you would get with get_device_parameters(), but
         are listed separately and in groups in the XML file for some reason.
         '''
-        start_element: Element = self.root.find(AtdfReader.device_path + '/property-groups')
+        start_element: Element | None = self.root.find(AtdfReader.device_path + '/property-groups')
 
         if start_element is None:
             return []
@@ -327,7 +331,7 @@ class AtdfReader:
                                              offset = AtdfReader.get_int(group_element, 'offset'))
                 inst_group_refs.append(rgr)
 
-            parameters: Element = inst_element.find('parameters')
+            parameters: Element | None = inst_element.find('parameters')
             if parameters is not None:
                 for param_element in parameters.findall('param'):
                     pv = ParameterValue(name = AtdfReader.get_str(param_element, 'name'),
@@ -349,10 +353,10 @@ class AtdfReader:
         you will need for the device peripherals.
         '''        
         # First find the module element corresponding to our desired peripheral.
-        start_element: Element = self.root.find(AtdfReader.modules_path)        
-        module_element: Element = self._find_element_with_name_attr(start_element,
-                                                                    'module',
-                                                                    periph_name)
+        start_element: Element | None = self.root.find(AtdfReader.modules_path)        
+        module_element: Element | None = self._find_element_with_name_attr(start_element,
+                                                                            'module',
+                                                                            periph_name)
         if module_element is None:
             return []
 
@@ -365,28 +369,34 @@ class AtdfReader:
         # group" for example. Find all groups that do this and handle those first. In practice,
         # this seems to be very rare. The PORT peripheral in the SAME54 is an example.
         for indirect_group in group_elements:
-            redirect_element: Element = indirect_group.find('register-group')
+            redirect_element: Element | None = indirect_group.find('register-group')
 
-            if redirect_element is not None:
-                real_name: str = AtdfReader.get_str(redirect_element, 'name')
-                real_group: Element = self._find_element_with_name_attr(module_element,
-                                                                        'register-group',
-                                                                        real_name)
+            if redirect_element is None:
+                continue
 
-                group_modes: list[str] = []
-                for mode_element in real_group.findall('mode'):
-                    group_modes.append(AtdfReader.get_str(mode_element, 'name'))
+            real_name: str = AtdfReader.get_str(redirect_element, 'name')
+            real_group: Element | None = self._find_element_with_name_attr(module_element,
+                                                                            'register-group',
+                                                                            real_name)
 
-                rg = RegisterGroup(name = AtdfReader.get_str(indirect_group, 'name'),
-                                   caption = AtdfReader.get_str(indirect_group, 'caption'),
-                                   offset = AtdfReader.get_int(redirect_element, 'offset'),
-                                   count = AtdfReader.get_int(redirect_element, 'count'),
-                                   modes = group_modes,
-                                   regs = self._get_registers_from_group(module_element, real_group))
-                register_groups.append(rg)
+            if real_group is None:
+                continue
 
-                done_elements.append(indirect_group)
-                done_elements.append(real_group)
+            group_modes: list[str] = []
+            for mode_element in real_group.findall('mode'):
+                group_modes.append(AtdfReader.get_str(mode_element, 'name'))
+
+            rg = RegisterGroup(name = AtdfReader.get_str(redirect_element, 'name'),
+                                caption = AtdfReader.get_str(indirect_group, 'caption'),
+                                offset = AtdfReader.get_int(redirect_element, 'offset'),
+                                count = AtdfReader.get_int(redirect_element, 'count'),
+                                size = AtdfReader.get_int(redirect_element, 'size'),
+                                modes = group_modes,
+                                regs = self._get_registers_from_group(module_element, real_group))
+            register_groups.append(rg)
+
+            done_elements.append(indirect_group)
+            done_elements.append(real_group)
 
         # Any elements we already handled in the above loop need to be removed from the group list
         # so we don't process them again.
@@ -403,6 +413,7 @@ class AtdfReader:
                                caption = AtdfReader.get_str(group, 'caption'),
                                offset = 0,
                                count = 0,
+                               size = AtdfReader.get_int(group, 'size'),
                                modes = group_modes,
                                regs = self._get_registers_from_group(module_element, group))
             register_groups.append(rg)
@@ -423,13 +434,13 @@ class AtdfReader:
         group_regs: list[PeripheralRegister] = []
 
         for reg_element in group_element.findall('register'):
-            reg = PeripheralRegister(name = AtdfReader.get_str('name'),
-                                     mode = AtdfReader.get_str('modes'),
-                                     offset = AtdfReader.get_int('offset'),
-                                     size = AtdfReader.get_int('size'),
-                                     count = AtdfReader.get_int('count'),
-                                     init_val = AtdfReader.get_int('initval'),
-                                     caption = AtdfReader.get_str('caption'),
+            reg = PeripheralRegister(name = AtdfReader.get_str(reg_element, 'name'),
+                                     mode = AtdfReader.get_str(reg_element, 'modes'),
+                                     offset = AtdfReader.get_int(reg_element, 'offset'),
+                                     size = AtdfReader.get_int(reg_element, 'size'),
+                                     count = AtdfReader.get_int(reg_element, 'count'),
+                                     init_val = AtdfReader.get_int(reg_element, 'initval'),
+                                     caption = AtdfReader.get_str(reg_element, 'caption'),
                                      fields = self._get_register_fields(module_element, reg_element))
             group_regs.append(reg)
 
@@ -448,13 +459,13 @@ class AtdfReader:
         reg_fields: list[RegisterField] = []
 
         for field_element in reg_element.findall('bitfield'):
-            values_name: str = field_element.get('values')
+            values_name: str | None = field_element.get('values')
             values_list: list[ParameterValue] = []
 
             if values_name is not None:
-                values_element: Element = self._find_element_with_name_attr(module_element,
-                                                                            'value-group',
-                                                                            values_name)
+                values_element: Element | None = self._find_element_with_name_attr(module_element,
+                                                                                   'value-group',
+                                                                                    values_name)
 
                 if values_element is not None:
                     for val_element in values_element.findall('value'):
@@ -471,8 +482,8 @@ class AtdfReader:
 
         return reg_fields
 
-    def _find_element_with_name_attr(self, start_element: Element, 
-                                     subelement_name: str, value: str) -> Element:
+    def _find_element_with_name_attr(self, start_element: Element | None, 
+                                     subelement_name: str, value: str) -> Element | None:
         '''Search under the starting element for the first subelement with a 'name' attribute that
         matches the given attribute value or None if one could not be found.
         '''

@@ -119,20 +119,21 @@ def _find_biggest_internal_region(address_spaces: list[DeviceAddressSpace], type
     This will return a copy of the region with the starting address of the containing address space
     added to the found region. This will return None if a region of the given type cannot be found.
     '''
-    biggest: DeviceMemoryRegion = None
+    biggest: DeviceMemoryRegion | None = None
 
     for addr_space in address_spaces:
         for region in addr_space.mem_regions:
-            if not region.external:
-                if type == region.type.lower():
-                    if not biggest or region.size > biggest.size:
-                        start = addr_space.start_addr + region.start_addr
-                        biggest = DeviceMemoryRegion(name = region.name,
-                                                     start_addr = start,
-                                                     size = region.size,
-                                                     type = region.type,
-                                                     page_size = region.page_size,
-                                                     external = region.external)
+            if region.external  or  type != region.type.lower():
+                continue
+
+            if not biggest or region.size > biggest.size:
+                start = addr_space.start_addr + region.start_addr
+                biggest = DeviceMemoryRegion(name = region.name,
+                                                start_addr = start,
+                                                size = region.size,
+                                                type = region.type,
+                                                page_size = region.page_size,
+                                                external = region.external)
 
     return biggest
 
@@ -142,6 +143,9 @@ def _get_memory_symbols(address_spaces: list[DeviceAddressSpace]) -> str:
     '''
     biggest_flash_region = _find_biggest_internal_region(address_spaces, 'flash')
     biggest_ram_region = _find_biggest_internal_region(address_spaces, 'ram')
+
+    if biggest_flash_region is None  or  biggest_ram_region is None:
+        return ''
 
     symbol_str: str = f'''
         /* Internal flash base address and size in bytes. */
@@ -153,13 +157,12 @@ def _get_memory_symbols(address_spaces: list[DeviceAddressSpace]) -> str:
         __RAM_SIZE = 0x{biggest_ram_region.size :08x}
 
         /* Stack and heap configuration. 
-        Modify these using the --defsym option to the linker. */
+           Modify these using the --defsym option to the linker. */
         PROVIDE(__STACK_SIZE = 0x00000400);
         PROVIDE(__HEAP_SIZE  = 0x00000C00);
 
         /* ARMv8-M stack sealing:
-        To use ARMv8-M stack sealing set __STACKSEAL_SIZE to 8 otherwise keep 0
-        */
+           To use ARMv8-M stack sealing set __STACKSEAL_SIZE to 8 otherwise keep 0. */
         __STACKSEAL_SIZE = 0;
         '''
 
@@ -170,6 +173,9 @@ def _get_MEMORY_command(address_spaces: list[DeviceAddressSpace]) -> str:
     '''
     biggest_flash_region = _find_biggest_internal_region(address_spaces, 'flash')
     biggest_ram_region = _find_biggest_internal_region(address_spaces, 'ram')
+
+    if biggest_flash_region is None  or  biggest_ram_region is None:
+        return ''
 
     memory_cmd: str = 'MEMORY\n{\n'
 
@@ -391,7 +397,7 @@ def _get_SECTIONS_command(address_spaces: list[DeviceAddressSpace]) -> str:
             . = . + __STACK_SIZE;
             . = ALIGN(8);
             __StackTop = .;
-          } > RAM
+          } > ram
           PROVIDE(__stack = __StackTop);
 
           /* ARMv8-M stack sealing:
@@ -404,7 +410,7 @@ def _get_SECTIONS_command(address_spaces: list[DeviceAddressSpace]) -> str:
             __StackSeal = .;
             . = . + 8;
             . = ALIGN(8);
-          } > RAM
+          } > ram
           */
 
           /* Check if data + heap + stack exceeds RAM limit */
