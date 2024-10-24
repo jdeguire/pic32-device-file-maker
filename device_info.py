@@ -38,77 +38,78 @@ name : str
 arch : str
 family : str
 parameters : list[ParameterValue]
-      name : str
-      value : str
-      caption : str
+    name : str
+    value : str
+    caption : str
 property_groups : list[PropertyGroup]
-      name : str
-      properties : list[ParameterValue]
-              name : str
-              value : str
-              caption : str
+    name : str
+    properties : list[ParameterValue]
+        name : str
+        value : str
+        caption : str
 memory : list[DeviceAddressSpace]
-      id : str
-      start_addr : int
-      size : int
-      mem_regions: list[DeviceMemoryRegion]
-              name : str
-              start_addr : int
-              size : int
-              type : str
-              page_size : int
-              external : bool
+    id : str
+    start_addr : int
+    size : int
+    mem_regions: list[DeviceMemoryRegion]
+        name : str
+        start_addr : int
+        size : int
+        type : str
+        page_size : int
+        external : bool
 peripherals : list[PeripheralGroup]
-      name : str
-      id : str
-      version : str
-      instances : list[PeripheralInstance]
-              name : str
-              reg_group_refs : list[RegisterGroupReference]
-                      instance_name : str
-                      module_name : str
-                      addr_space : str
-                      offset : int
-              params : list[ParameterValue]
-                      name : str
-                      value : str
-                      caption : str
-      reg_groups : list[RegisterGroup]
-              name : str
-              caption : str
-              offset : int
-              count : int
-              size : int
-              modes : list[str]
-              regs : list[PeripheralRegister]
-                      name : str
-                      mode : str
-                      offset : int
-                      size : int
-                      count : int
-                      init_val : int
-                      caption : str
-                      fields : list[RegisterField]
-                              name : str
-                              caption : str
-                              mask : int
-                              values : list[ParameterValue]
-                                      name : str
-                                      value : str
-                                      caption : str
+    name : str
+    id : str
+    version : str
+    instances : list[PeripheralInstance]
+        name : str
+        reg_group_refs : list[RegisterGroupReference]
+            instance_name : str
+            module_name : str
+            addr_space : str
+            offset : int
+        params : list[ParameterValue]
+            name : str
+            value : str
+            caption : str
+    reg_groups : list[RegisterGroup]
+        name : str
+        caption : str
+        offset : int
+        count : int
+        size : int
+        modes : list[str]
+        members : list[RegisterGroupMember]
+            is_subgroup : bool
+            name : str
+            mode : str
+            offset : int
+            size : int
+            count : int
+            init_val : int
+            caption : str
+            fields : list[RegisterField]
+                name : str
+                caption : str
+                mask : int
+                values : list[ParameterValue]
+                    name : str
+                    value : str
+                    caption : str
 interrupts : list[DeviceInterrupt]
-      name : str
-      index : int
-      module_instance : str
-      caption : str
+    name : str
+    index : int
+    module_instance : str
+    caption : str
 event_generators : list[DeviceEvent]
-      name : str
-      index : int
-      module_instance : str
+    name : str
+    index : int
+    module_instance : str
 event_users : list[DeviceEvent]
-      name : str
-      index : int
-      module_instance : str
+    name : str
+    index : int
+    module_instance : str
 '''
 
 from dataclasses import dataclass
@@ -189,14 +190,18 @@ class RegisterField:
     values: list[ParameterValue]    # Enum values for the possible values of this field
 
 @dataclass
-class PeripheralRegister:
-    '''A data structure to represent a single register in a peripheral.
+class RegisterGroupMember:
+    '''A data structure to represent a member of a register group.
+    
+    These are usually registers, but in rare case can actually be other register groups. The PORT
+    peripheral on the SAME54 and newer PIC32C parts is like this.
     '''
+    is_subgroup: bool               # False for registers, True for register subgroups
     name: str
     mode: str
     offset: int                     # The offset from the start of the instance
     size: int                       # Size in bytes
-    count: int                      # Number of registers in array
+    count: int                      # Number of members in array
     init_val: int                   # Initial value
     caption: str                    # Description
     fields: list[RegisterField]
@@ -214,7 +219,7 @@ class RegisterGroup:
     count: int          # Used for some GPIO peripherals to create an array of register sets
     size: int           # Might be used when count is non-zero to have padding between each set
     modes: list[str]    # Used for SERCOM because registers change based on SPI vs I2C vs whatever
-    regs: list[PeripheralRegister]
+    members: list[RegisterGroupMember]
 
 @dataclass
 class PeripheralGroup:

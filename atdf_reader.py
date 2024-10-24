@@ -362,68 +362,27 @@ class AtdfReader:
 
         register_groups: list[RegisterGroup] = []
 
-        group_elements: list[Element] = module_element.findall('register-group')
-        done_elements: list[Element] = []
-
-        # A register group can point at another group to say "I'm made up of 4 of this other
-        # group" for example. Find all groups that do this and handle those first. In practice,
-        # this seems to be very rare. The PORT peripheral in the SAME54 is an example.
-        for indirect_group in group_elements:
-            redirect_element: Element | None = indirect_group.find('register-group')
-
-            if redirect_element is None:
-                continue
-
-            real_name: str = AtdfReader.get_str(redirect_element, 'name')
-            real_group: Element | None = self._find_element_with_name_attr(module_element,
-                                                                            'register-group',
-                                                                            real_name)
-
-            if real_group is None:
-                continue
-
-            group_modes: list[str] = []
-            for mode_element in real_group.findall('mode'):
-                group_modes.append(AtdfReader.get_str(mode_element, 'name'))
-
-            rg = RegisterGroup(name = AtdfReader.get_str(redirect_element, 'name'),
-                                caption = AtdfReader.get_str(indirect_group, 'caption'),
-                                offset = AtdfReader.get_int(redirect_element, 'offset'),
-                                count = AtdfReader.get_int(redirect_element, 'count'),
-                                size = AtdfReader.get_int(redirect_element, 'size'),
-                                modes = group_modes,
-                                regs = self._get_registers_from_group(module_element, real_group))
-            register_groups.append(rg)
-
-            done_elements.append(indirect_group)
-            done_elements.append(real_group)
-
-        # Any elements we already handled in the above loop need to be removed from the group list
-        # so we don't process them again.
-        for done in done_elements:
-            group_elements.remove(done)
-
-        # Now finish up by processing everything else.
-        for group in group_elements:
+        for group in module_element.findall('register-group'):
             group_modes: list[str] = []
             for mode_element in group.findall('mode'):
                 group_modes.append(AtdfReader.get_str(mode_element, 'name'))
 
             rg = RegisterGroup(name = AtdfReader.get_str(group, 'name'),
                                caption = AtdfReader.get_str(group, 'caption'),
-                               offset = 0,
-                               count = 0,
+                               offset = AtdfReader.get_int(group, 'offset'),
+                               count = AtdfReader.get_int(group, 'count'),
                                size = AtdfReader.get_int(group, 'size'),
                                modes = group_modes,
-                               regs = self._get_registers_from_group(module_element, group))
+                               members = self._get_register_group_members(module_element, group))
             register_groups.append(rg)
 
         return register_groups
 
-    def _get_registers_from_group(self,
-                                  module_element:Element,
-                                  group_element: Element) -> list[PeripheralRegister]:
-        '''Get the register definitions for the register group referred to by the given Element.
+    def _get_register_group_members(self,
+                                    module_element:Element,
+                                    group_element: Element) -> list[RegisterGroupMember]:
+        '''Get the members for the register group referred to by the given Element, which can be
+        either a register definition or a reference to another group.
 
         The peripheral module element is also needed because that is used when getting info about
         the bitfields in the register.
@@ -431,20 +390,39 @@ class AtdfReader:
         This is a private method. You should call 'get_peripheral_groups()' to get all the info
         you will need for the device peripherals.
         '''
-        group_regs: list[PeripheralRegister] = []
+        group_members: list[RegisterGroupMember] = []
 
-        for reg_element in group_element.findall('register'):
-            reg = PeripheralRegister(name = AtdfReader.get_str(reg_element, 'name'),
-                                     mode = AtdfReader.get_str(reg_element, 'modes'),
-                                     offset = AtdfReader.get_int(reg_element, 'offset'),
-                                     size = AtdfReader.get_int(reg_element, 'size'),
-                                     count = AtdfReader.get_int(reg_element, 'count'),
-                                     init_val = AtdfReader.get_int(reg_element, 'initval'),
-                                     caption = AtdfReader.get_str(reg_element, 'caption'),
-                                     fields = self._get_register_fields(module_element, reg_element))
-            group_regs.append(reg)
+        for member in group_element:
+            if 'register-group' == member.tag:
+                # This group member is a reference to another group. This is used to add another
+                # layer of indirection to a set of registers. For example, the PORT peripheral on
+                # some parts uses this to denote an array of a group with one for each port.
 
-        return group_regs
+                ref = RegisterGroupMember(is_subgroup = True,
+                                          name = AtdfReader.get_str(member, 'name'),
+                                          mode = AtdfReader.get_str(member, 'modes'),
+                                          offset = AtdfReader.get_int(member, 'offset'),
+                                          size = AtdfReader.get_int(member, 'size'),
+                                          count = AtdfReader.get_int(member, 'count'),
+                                          init_val = 0,
+                                          caption = AtdfReader.get_str(member, 'caption'),
+                                          fields = [])
+                group_members.append(ref)
+            elif 'register' == member.tag:
+                # This group member is a register.
+
+                reg = RegisterGroupMember(is_subgroup = False,
+                                          name = AtdfReader.get_str(member, 'name'),
+                                          mode = AtdfReader.get_str(member, 'modes'),
+                                          offset = AtdfReader.get_int(member, 'offset'),
+                                          size = AtdfReader.get_int(member, 'size'),
+                                          count = AtdfReader.get_int(member, 'count'),
+                                          init_val = AtdfReader.get_int(member, 'initval'),
+                                          caption = AtdfReader.get_str(member, 'caption'),
+                                          fields = self._get_register_fields(module_element, member))
+                group_members.append(reg)
+
+        return group_members
 
     def _get_register_fields(self, module_element: Element, reg_element: Element) -> list[RegisterField]:
         '''Get the definitions of the bitfields within the given register, including the list of
