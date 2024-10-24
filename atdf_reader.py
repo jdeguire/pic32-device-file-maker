@@ -110,7 +110,7 @@ class AtdfReader:
                           family = self.get_device_family(),
                           parameters = self.get_device_parameters(),
                           property_groups = self.get_device_propertes(),
-                          memory = self.get_device_memory(),
+                          address_spaces = self.get_device_memory(),
                           peripherals = self.get_peripheral_groups(),
                           interrupts = self.get_interrupts(),
                           event_generators = self.get_event_generators(),

@@ -47,7 +47,7 @@ property_groups : list[PropertyGroup]
         name : str
         value : str
         caption : str
-memory : list[DeviceAddressSpace]
+address_spaces : list[DeviceAddressSpace]
     id : str
     start_addr : int
     size : int
@@ -267,7 +267,7 @@ class DeviceInfo:
     family: str
     parameters: list[ParameterValue]
     property_groups: list[PropertyGroup]
-    memory: list[DeviceAddressSpace]
+    address_spaces: list[DeviceAddressSpace]
     peripherals: list[PeripheralGroup]
     interrupts: list[DeviceInterrupt]
     event_generators: list[DeviceEvent]

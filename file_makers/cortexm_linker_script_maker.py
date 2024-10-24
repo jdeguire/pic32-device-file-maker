@@ -50,21 +50,21 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     outfile.write(strings.get_cmsis_apache_license(' * '))
     outfile.write(' */\n\n')
     
-    address_spaces: list[DeviceAddressSpace] = _remove_overlapping_memory(devinfo.memory)
+    unique_addr_spaces: list[DeviceAddressSpace] = _remove_overlapping_memory(devinfo.address_spaces)
 
     # Sort the now-not-overlapping memory regions by starting address.
     # See https://docs.python.org/3/howto/sorting.html
-    for addr_space in address_spaces:
+    for addr_space in unique_addr_spaces:
         addr_space.mem_regions.sort(key=operator.attrgetter('start_addr'))
 
     # Now we can output the actual linker script bits.
-    outfile.write(_get_memory_symbols(address_spaces))
+    outfile.write(_get_memory_symbols(unique_addr_spaces))
     outfile.write('\n\n')
-    outfile.write(_get_MEMORY_command(address_spaces))
+    outfile.write(_get_MEMORY_command(unique_addr_spaces))
     outfile.write('\n\n')
     outfile.write('ENTRY(Reset_Handler)')
     outfile.write('\n\n')
-    outfile.write(_get_SECTIONS_command(address_spaces))
+    outfile.write(_get_SECTIONS_command(unique_addr_spaces))
 
 
 def _remove_overlapping_memory(address_spaces: list[DeviceAddressSpace]) -> list[DeviceAddressSpace]:
@@ -113,7 +113,8 @@ def _remove_overlapping_memory(address_spaces: list[DeviceAddressSpace]) -> list
         
     return new_spaces
 
-def _find_biggest_internal_region(address_spaces: list[DeviceAddressSpace], type: str) -> DeviceMemoryRegion | None:
+def _find_biggest_internal_region(address_spaces: list[DeviceAddressSpace],
+                                  type: str) -> DeviceMemoryRegion | None:
     '''Find and return the largest internal memory region of the given type (flash, ram, io, etc.).
 
     This will return a copy of the region with the starting address of the containing address space
@@ -149,12 +150,12 @@ def _get_memory_symbols(address_spaces: list[DeviceAddressSpace]) -> str:
 
     symbol_str: str = f'''
         /* Internal flash base address and size in bytes. */
-        __ROM_BASE = 0x{biggest_flash_region.start_addr :08x}
-        __ROM_SIZE = 0x{biggest_flash_region.size :08x}
+        __ROM_BASE = 0x{biggest_flash_region.start_addr :08X}
+        __ROM_SIZE = 0x{biggest_flash_region.size :08X}
 
         /* Internal RAM base address and size in bytes. */
-        __RAM_BASE = 0x{biggest_ram_region.start_addr :08x}
-        __RAM_SIZE = 0x{biggest_ram_region.size :08x}
+        __RAM_BASE = 0x{biggest_ram_region.start_addr :08X}
+        __RAM_SIZE = 0x{biggest_ram_region.size :08X}
 
         /* Stack and heap configuration. 
            Modify these using the --defsym option to the linker. */
@@ -188,11 +189,11 @@ def _get_MEMORY_command(address_spaces: list[DeviceAddressSpace]) -> str:
             # We need to add some region attributes to the main flash and RAM sections. Unfortunately,
             # the device info we can get fro the ATDF files is not totally helpful here.
             if name == biggest_flash_region.name.lower():
-                memory_cmd += f'  {name :<17} (rx)  : ORIGIN = 0x{start :08x}, LENGTH = 0x{size :08x}\n'
+                memory_cmd += f'  {name :<17} (rx)  : ORIGIN = 0x{start :08X}, LENGTH = 0x{size :08X}\n'
             elif name == biggest_ram_region.name.lower():
-                memory_cmd += f'  {name :<17} (rwx) : ORIGIN = 0x{start :08x}, LENGTH = 0x{size :08x}\n'
+                memory_cmd += f'  {name :<17} (rwx) : ORIGIN = 0x{start :08X}, LENGTH = 0x{size :08X}\n'
             else:
-                memory_cmd += f'  {name :<23} : ORIGIN = 0x{start :08x}, LENGTH = 0x{size :08x}\n'
+                memory_cmd += f'  {name :<23} : ORIGIN = 0x{start :08X}, LENGTH = 0x{size :08X}\n'
 
     memory_cmd += '}\n\n'
 
