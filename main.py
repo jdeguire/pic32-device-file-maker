@@ -62,6 +62,7 @@
 #
 
 from atdf_reader import AtdfReader
+import device_info
 from file_makers import *
 import os
 from pathlib import Path
@@ -90,7 +91,10 @@ def get_atdf_paths_from_dir(packs_dir: str) -> list[Path]:
     for rootname, _, filenames in os.walk(packs_path):
         for name in filenames:
             p = Path(rootname, name)
-            if '.atdf' == p.suffix:
+# TODO: This is hardcoded to just a couple of devices for now. Remove this later.
+#       We could probably do some basic filtering here, like removing "PIC32M" stuff.
+#            if '.atdf' == p.suffix:
+            if 'pic32cz8110ca80208.atdf' == name.lower()  or 'atsame54p20a.atdf' == name.lower():
                 atdf_paths.append(p)
 
     return atdf_paths
@@ -120,44 +124,77 @@ if '__main__' == __name__:
     output_path = our_path / 'pic32-device-files'
     remake_dirs(output_path)
 
-    atdf_paths = get_atdf_paths_from_dir(packs_dir)
-    for p in atdf_paths:
+    peripherals_to_make: dict[str, device_info.PeripheralGroup] = {}
+    peripheral_header_prefix = 'periph/'
+
+    # Make the files specific to each device and collect their perpiherals so we can make
+    # those later. 
+    for p in get_atdf_paths_from_dir(packs_dir):
         atdf = AtdfReader(p)
 
-# TODO: This is hardcoded to the PIC32CZ CA80 for now. Enable this for other stuff later.
-#        if atdf.get_device_arch().startswith('cortex-m'):
-        if atdf.get_device_name() == 'PIC32CZ8110CA80208'  or  atdf.get_device_name() == 'ATSAME54P20A':
-            print(f'Creating files for device {atdf.get_device_name()} ({atdf.get_device_arch()})')
+        if not atdf.get_device_arch().startswith('cortex-m'):
+            continue
 
-            devinfo = atdf.get_all_device_info()
+        print(f'Creating files for device {atdf.get_device_name()} ({atdf.get_device_arch()})')
 
-            # Linker script
-            #
-            ld_path = output_path / 'lib' / 'cortex-m' / 'proc'
-            ld_name = devinfo.name.lower() + '.ld'
-            ld_loc = ld_path / ld_name
+        devinfo = atdf.get_all_device_info()
 
-            os.makedirs(ld_path, exist_ok = True)
+        # Linker script
+        #
+        ld_path = output_path / 'lib' / 'cortex-m' / 'proc'
+        ld_name = devinfo.name.lower() + '.ld'
+        ld_loc = ld_path / ld_name
 
-            with open(ld_loc, 'w', encoding='utf-8', newline='\n') as ld:
-                cortexm_linker_script_maker.run(devinfo, ld)
+        os.makedirs(ld_path, exist_ok = True)
 
-            # C device-specifc header file
-            #
-            dev_header_path = output_path / 'include' / 'cortex-m' / 'proc'
-            dev_header_name = devinfo.name.lower() + '.h'
-            dev_header_loc = dev_header_path / dev_header_name
+        with open(ld_loc, 'w', encoding='utf-8', newline='\n') as ld:
+            cortexm_linker_script_maker.run(devinfo, ld)
 
-            os.makedirs(dev_header_path, exist_ok = True)
+        # C device-specifc header file
+        #
+        dev_header_path = output_path / 'include' / 'cortex-m' / 'proc'
+        dev_header_name = devinfo.name.lower() + '.h'
+        dev_header_loc = dev_header_path / dev_header_name
 
-            with open(dev_header_loc, 'w', encoding='utf-8', newline='\n') as hdr:
-                cortexm_c_device_header_maker.run(devinfo, hdr)
+        os.makedirs(dev_header_path, exist_ok = True)
+
+        with open(dev_header_loc, 'w', encoding='utf-8', newline='\n') as hdr:
+            cortexm_c_device_header_maker.run(devinfo, hdr, peripheral_header_prefix)
+
+        # Make a dict of peripherals we need to make. Doing this ensures we make each unique
+        # peripheral only once.
+        #
+        for p in devinfo.peripherals:
+            if not p.id  or 'system_ip' in p.id.lower():
+                continue
+
+            full_name = 'cortexm_' + p.name + '_' + p.id
+
+            if full_name not in peripherals_to_make:
+                peripherals_to_make[full_name] = p
 
 
-            # TODO: Remove this escape hatch later. This is here to exit a little more quickly while testing.
-            if atdf.get_device_name() == 'ATSAME54P20A':
-                break
-        # else:
-        #     print(f'Device {atdf.get_device_name()} has unsupported arch {atdf.get_device_arch()}')
+        # TODO: We will have to figure out how to handle device fuses. Maybe put those in separate files?
+        # TODO: We will need to gather a list of device names and families if we want an xc.h sort of file.
+        # TODO: We still need configuration files containing options to pass to Clang.
+        # TODO: We still need a file containing the device vectors and structure.
+        # TODO: We need to copy the Apache license to the output somewhere.
+        # TODO: We need to implement startup code, but that can probably be made common to all devices.
+        #       This is especially true if we can put the vectors into their own file.
+
+
+    # Make all of the peripheral implementation headers. These are shared among various devices.
+    #
+    for key,val in peripherals_to_make.items():
+        if key.startswith('cortexm_'):
+            periph_name = key.split('_', 1)[1]
+            print(f'Peripheral {periph_name} is in the list')
+
+            periph_header_path = output_path / 'include' / 'cortex-m' / 'proc' / peripheral_header_prefix
+            periph_header_name = periph_name + '.h'
+            periph_header_loc = periph_header_path / periph_header_name
+
+            with open(periph_header_loc, 'w', encoding='utf-8', newline='\n') as hdr:
+                cortexm_c_periph_header_maker.run(val, hdr)
 
     exit(0)
