@@ -40,7 +40,7 @@ import textwrap
 from typing import IO
 
 
-def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
+def run(devinfo: DeviceInfo, outfile: IO[str], periph_header_prefix: str) -> None:
     '''Make a C header file for the given device assuming is a a PIC or SAM Cortex-M device.
     '''
     outfile.write(_get_file_prologue(devinfo.name))
@@ -71,7 +71,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     outfile.write('\n\n')
 
     outfile.write('/* ----- Device Peripheral Headers ----- */\n')
-    outfile.write(_get_peripheral_headers(devinfo.peripherals))
+    outfile.write(_get_peripheral_headers(devinfo.peripherals, periph_header_prefix))
     outfile.write('\n\n')
 
     outfile.write('/* ----- Device Peripheral Address Macros ----- */\n')
@@ -180,9 +180,12 @@ def _get_memory_region_macros(address_spaces: list[DeviceAddressSpace]) -> str:
 
     return region_str
 
-def _get_peripheral_headers(peripherals: list[PeripheralGroup]) -> str:
+def _get_peripheral_headers(peripherals: list[PeripheralGroup], prefix: str) -> str:
     '''Return a string containing include declarations for this devices' peripherals, not including
     device fuses or core peripherals.
+
+    The prefix is prepended to every include declaration to form a relative path to the peripheral
+    headers from this device file. This creates "" includes, not <> includes.
     '''
     periph_str: str = ''
 
@@ -190,7 +193,7 @@ def _get_peripheral_headers(peripherals: list[PeripheralGroup]) -> str:
         if not _peripheral_is_special(periph):
             name = periph.name.lower()
             id = periph.id.lower()
-            periph_str += f'#include "periph/{name}_{id}.h"\n'
+            periph_str += f'#include "{prefix}{name}_{id}.h"\n'
 
     return periph_str
 
@@ -248,14 +251,8 @@ def _peripheral_is_special(periph: PeripheralGroup) -> bool:
     if 'fuses' == periph.name.lower():
         return True
 
-    # Check this becaus a peripheral might not have any register groups associated with them.
-    # It's weird, but we probably do not need to do anything special with these.
-    if not periph.instances[0].reg_group_refs:
-        return False
-
-    # Core peripherals are at addres 0xE0000000 and above.
-    # This just checks the first group of the first instance we have, which should be fine.
-    if periph.instances[0].reg_group_refs[0].offset >= 0xE0000000:
+    # Core peripherals appear to either not have an ID or have SYSTEM_IP as their ID.
+    if not periph.id  or 'system_ip' in periph.id.lower():
         return True
     
     return False
