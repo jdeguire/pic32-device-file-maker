@@ -452,9 +452,15 @@ class AtdfReader:
                                              caption = AtdfReader.get_str(val_element, 'caption'))
                         values_list.append(val)
 
+            field_modes_str = AtdfReader.get_str(field_element, 'modes')
+            field_modes: list[str] = []
+            if field_modes_str:
+                field_modes = field_modes_str.split()
+
             rf = RegisterField(name = AtdfReader.get_str(field_element, 'name'),
                                caption = AtdfReader.get_str(field_element, 'caption'),
                                mask = AtdfReader.get_int(field_element, 'mask'),
+                               modes = field_modes,
                                values = values_list)
             reg_fields.append(rf)
 

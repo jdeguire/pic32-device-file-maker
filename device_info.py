@@ -93,6 +93,7 @@ peripherals : list[PeripheralGroup]
                 name : str
                 caption : str
                 mask : int
+                modes : list[str]
                 values : list[ParameterValue]
                     name : str
                     value : str
@@ -187,6 +188,7 @@ class RegisterField:
     name: str
     caption: str
     mask: int
+    modes: list[str]
     values: list[ParameterValue]    # Enum values for the possible values of this field
 
 @dataclass
