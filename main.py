@@ -187,14 +187,16 @@ if '__main__' == __name__:
     #
     for key,val in peripherals_to_make.items():
         if key.startswith('cortexm_'):
-            periph_name = key.split('_', 1)[1]
-            print(f'Peripheral {periph_name} is in the list')
+            periph_name = key.split('_', 1)[1].lower()
+            print(f'Creating peripheral header for {periph_name}')
 
             periph_header_path = output_path / 'include' / 'cortex-m' / 'proc' / peripheral_header_prefix
             periph_header_name = periph_name + '.h'
             periph_header_loc = periph_header_path / periph_header_name
 
+            os.makedirs(periph_header_path, exist_ok = True)
+
             with open(periph_header_loc, 'w', encoding='utf-8', newline='\n') as hdr:
-                cortexm_c_periph_header_maker.run(val, hdr)
+                cortexm_c_periph_header_maker.run(periph_name, val, hdr)
 
     exit(0)

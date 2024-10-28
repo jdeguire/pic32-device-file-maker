@@ -46,9 +46,11 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_header_prefix: str) -> Non
     outfile.write(_get_file_prologue(devinfo.name))
     outfile.write('\n')
 
+    outfile.write('#ifndef __ASSEMBLER__\n\n')
     outfile.write('/* ----- Interrupt Number Enumeration ----- */\n')
     outfile.write(_get_interrupt_enum(devinfo.interrupts))
-    outfile.write('\n\n')
+#TODO: We need to output the function prototypes for the vectors and the declaration for the vector struct.
+    outfile.write('\n#endif /* ifndef __ASSEMBLER__ */\n\n')
 
     outfile.write('/* ----- Core Configuration Macros ----- */\n')
     outfile.write(_get_parameter_macros(devinfo.parameters))
@@ -67,16 +69,19 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_header_prefix: str) -> Non
     outfile.write('\n\n')
 
     outfile.write('/* ----- CMSIS Core and Peripherals Header ----- */\n')
-    outfile.write('#include <cortex_' + devinfo.arch.split('-')[1].lower() + '.h>\n')
+    outfile.write('#include <core_' + devinfo.arch.split('-')[1].lower() + '.h>\n')
     outfile.write('\n\n')
 
     outfile.write('/* ----- Device Peripheral Headers ----- */\n')
     outfile.write(_get_peripheral_headers(devinfo.peripherals, periph_header_prefix))
     outfile.write('\n\n')
 
+    outfile.write('#ifndef __ASSEMBLER__\n\n')
     outfile.write('/* ----- Device Peripheral Address Macros ----- */\n')
     outfile.write(_get_peripheral_address_macros(devinfo.peripherals, devinfo.address_spaces))
     outfile.write('\n\n')
+    outfile.write('\n#endif /* ifndef __ASSEMBLER__ */\n\n')
+#TODO: We need to output BASE_ADDR macros to use in asm.
 
     outfile.write('/* ----- Device Peripheral Instance Parameters ----- */\n')
     for periph in devinfo.peripherals:
@@ -168,15 +173,15 @@ def _get_memory_region_macros(address_spaces: list[DeviceAddressSpace]) -> str:
         for mem_region in addr_space.mem_regions:
             base = addr_space.start_addr + mem_region.start_addr
             base_macro_name = mem_region.name.upper() + '_BASE'
-            region_str += f'#define {base_macro_name :<32} (0x{base :08X}UL)\n'
+            region_str += f'#define {base_macro_name :<32} (0x{base :08X}ul)\n'
 
             size = mem_region.size
             size_macro_name = mem_region.name.upper() + '_SIZE'
-            region_str += f'#define {size_macro_name :<32} (0x{size :08X}UL)\n'
+            region_str += f'#define {size_macro_name :<32} (0x{size :08X}ul)\n'
 
             page_size = mem_region.page_size
             pagesize_macro_name = mem_region.name.upper() + '_PAGESIZE'
-            region_str += f'#define {pagesize_macro_name :<32} ({page_size}UL)\n\n'
+            region_str += f'#define {pagesize_macro_name :<32} ({page_size}ul)\n\n'
 
     return region_str
 
