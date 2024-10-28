@@ -76,8 +76,6 @@ peripherals : list[PeripheralGroup]
     reg_groups : list[RegisterGroup]
         name : str
         caption : str
-        offset : int
-        count : int
         size : int
         modes : list[str]
         members : list[RegisterGroupMember]
@@ -217,8 +215,6 @@ class RegisterGroup:
     '''
     name: str
     caption: str
-    offset: int         # Will usually be zero since the register offset is usually enough
-    count: int          # Used for some GPIO peripherals to create an array of register sets
     size: int           # Might be used when count is non-zero to have padding between each set
     modes: list[str]    # Used for SERCOM because registers change based on SPI vs I2C vs whatever
     members: list[RegisterGroupMember]

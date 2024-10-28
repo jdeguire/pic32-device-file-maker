@@ -369,8 +369,6 @@ class AtdfReader:
 
             rg = RegisterGroup(name = AtdfReader.get_str(group, 'name'),
                                caption = AtdfReader.get_str(group, 'caption'),
-                               offset = AtdfReader.get_int(group, 'offset'),
-                               count = AtdfReader.get_int(group, 'count'),
                                size = AtdfReader.get_int(group, 'size'),
                                modes = group_modes,
                                members = self._get_register_group_members(module_element, group))
