@@ -126,6 +126,7 @@ if '__main__' == __name__:
 
     peripherals_to_make: dict[str, device_info.PeripheralGroup] = {}
     peripheral_header_prefix = 'periph/'
+    fuses_header_prefix = 'fuses/'
 
     # Make the files specific to each device and collect their perpiherals so we can make
     # those later. 
@@ -159,22 +160,34 @@ if '__main__' == __name__:
         os.makedirs(dev_header_path, exist_ok = True)
 
         with open(dev_header_loc, 'w', encoding='utf-8', newline='\n') as hdr:
-            cortexm_c_device_header_maker.run(devinfo, hdr, peripheral_header_prefix)
+            cortexm_c_device_header_maker.run(devinfo, hdr, peripheral_header_prefix, 
+                                              fuses_header_prefix)
 
         # Make a dict of peripherals we need to make. Doing this ensures we make each unique
-        # peripheral only once.
+        # peripheral only once. We do not need to make core peripherals because they are already
+        # defined in CMSIS headers.
         #
-        for p in devinfo.peripherals:
-            if not p.id  or 'system_ip' in p.id.lower():
-                continue
+        # Device fuses are a special peripheral, so look for those and handle them here. Assume
+        # each device has at most one fuse peripheral called FUSES for now. You can find the special
+        # handling this app does for fuses by searching for 'fuses' with the single quotes.
+        #
+        for periph in devinfo.peripherals:
+            if 'fuses' == periph.name.lower():
+                fuses_header_path = output_path / 'include' / 'cortex-m' / 'proc' / fuses_header_prefix
+                fuses_header_name = devinfo.name.lower() + '.h'
+                fuses_header_loc = fuses_header_path / fuses_header_name
 
-            full_name = 'cortexm_' + p.name + '_' + p.id
+                os.makedirs(fuses_header_path, exist_ok = True)
 
-            if full_name not in peripherals_to_make:
-                peripherals_to_make[full_name] = p
+                with open(fuses_header_loc, 'w', encoding='utf-8', newline='\n') as hdr:
+                    basename = devinfo.name.lower() + '_fuses'
+                    cortexm_c_periph_header_maker.run(basename, periph, hdr)
+            elif periph.id  and  'system_ip' not in periph.id.lower():
+                full_name = 'cortexm_' + periph.name + '_' + periph.id
 
+                if full_name not in peripherals_to_make:
+                    peripherals_to_make[full_name] = periph
 
-        # TODO: We will have to figure out how to handle device fuses. Maybe put those in separate files?
         # TODO: We will need to gather a list of device names and families if we want an xc.h sort of file.
         # TODO: We still need configuration files containing options to pass to Clang.
         # TODO: We still need a file containing the device vectors and structure.
@@ -183,7 +196,7 @@ if '__main__' == __name__:
         #       This is especially true if we can put the vectors into their own file.
 
 
-    # Make all of the peripheral implementation headers. These are shared among various devices.
+    # Make all of the peripheral implementation C headers. These are shared among various devices.
     #
     for key,val in peripherals_to_make.items():
         if key.startswith('cortexm_'):

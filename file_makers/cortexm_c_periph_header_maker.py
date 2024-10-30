@@ -319,17 +319,23 @@ def _get_base_groupdef_name(periph_name: str, group_name: str, mode_name: str = 
     then the resulting name will be "periph_group_regs". The peripheral name is stripped from the
     start of the group name if needed. If the group name is then empty, the resulting name will be
     "periph_mode_regs" or "periph_regs" if a mode is not provided. The name is all lower-case.
+
+    Fuses are a special case and will return just group name in lower case.
     '''
-    if group_name.startswith(periph_name):
-        group_name = group_name[len(periph_name):]
+    # For now, assume that fuses are in a peripheral called FUSES.
+    if 'fuses' == periph_name.lower():
+        return group_name.lower().replace('__', '_')
+    else:
+        if group_name.startswith(periph_name):
+            group_name = group_name[len(periph_name):]
 
-    if group_name:
-        group_name = '_' + group_name.lower()
+        if group_name:
+            group_name = '_' + group_name.lower()
 
-    if mode_name:
-        mode_name = '_' + mode_name.lower()
+        if mode_name:
+            mode_name = '_' + mode_name.lower()
 
-    return f'{periph_name.lower()}{mode_name}{group_name}_regs'
+        return f'{periph_name.lower()}{mode_name}{group_name}_regs'.replace('__', '_')
 
 def _get_reg_type_from_size(size: int) -> str:
     '''Return a C99 type to be used with the given size, such as uint32_t for something that is

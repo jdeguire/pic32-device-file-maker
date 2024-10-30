@@ -40,7 +40,7 @@ import textwrap
 from typing import IO
 
 
-def run(devinfo: DeviceInfo, outfile: IO[str], periph_header_prefix: str) -> None:
+def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: str) -> None:
     '''Make a C header file for the given device assuming is a a PIC or SAM Cortex-M device.
     '''
     outfile.write(_get_file_prologue(devinfo.name))
@@ -73,7 +73,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_header_prefix: str) -> Non
     outfile.write('\n\n')
 
     outfile.write('/* ----- Device Peripheral Headers ----- */\n')
-    outfile.write(_get_peripheral_headers(devinfo.peripherals, periph_header_prefix))
+    outfile.write(_get_peripheral_headers(devinfo.peripherals, periph_prefix))
     outfile.write('\n\n')
 
     outfile.write('#ifndef __ASSEMBLER__\n\n')
@@ -92,6 +92,16 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_header_prefix: str) -> Non
             outfile.write('// ' + instance.name + '\n')
             outfile.write(_get_parameter_macros(instance.params, instance.name + '_'))
     outfile.write('\n\n')
+
+    # Fuses need special handling from other peripherals. This assumes there is at most one fuse
+    # peripheral called FUSES, though that peripheral can have multiple groups.
+    for fp in devinfo.peripherals:
+        if 'fuses' == fp.name.lower():
+            outfile.write('/* ----- Device Configuration Fuses ----- */\n')
+            outfile.write(f'#include "{fuse_prefix}{devinfo.name.lower()}.h"\n\n')
+            outfile.write(_get_device_fuse_declarations(fp))
+            outfile.write('\n\n')
+            break
 
 #TODO: We will need special handling for device fuses.
     outfile.write(_get_file_epilogue(devinfo.name))
@@ -227,6 +237,27 @@ def _get_peripheral_address_macros(peripherals: list[PeripheralGroup],
 
     return macros
 
+def _get_device_fuse_declarations(fuse_periph: PeripheralGroup) -> str:
+    '''Return a string of declarations for the given periepheral group assuming the group represents
+    a set of device fuses.
+
+    Fuses need special handling because their definitions need to be present in the firmware image
+    so they can be programmed onto the device. The linker script for this device will need to have
+    output sections for these.
+    '''
+    fuses_str: str = ''
+
+    for instance in fuse_periph.instances:
+        for group_ref in instance.reg_group_refs:
+            type_name = group_ref.module_name.lower() + '_t'
+            section_name = '.' + group_ref.instance_name.lower()
+            variable_name = 'CFG_' + group_ref.instance_name.upper()
+
+            fuses_str += f'extern const {type_name} '
+            fuses_str += f'__attribute__((used, retain, section("{section_name}"))) '
+            fuses_str += variable_name + ';\n'
+
+    return fuses_str
 
 def _get_file_epilogue(devname: str) -> str:
     '''Return a string with the file epilogue, which is the stuff at the end of the file like

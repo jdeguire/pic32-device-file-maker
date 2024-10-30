@@ -64,7 +64,19 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     outfile.write('\n\n')
     outfile.write('ENTRY(Reset_Handler)')
     outfile.write('\n\n')
-    outfile.write(_get_SECTIONS_command(unique_addr_spaces))
+
+    outfile.write('SECTIONS\n{\n')
+    outfile.write(_get_standard_SECTIONS())
+
+    # Fuses are special because unlike other peripherals with their fixed locations, fuses
+    # need to be programmed into the flash at the correct spot. We need to create linker sections
+    # for them to go. This assumes a device has at most one fuses peripheral called FUSES.
+    for periph in devinfo.peripherals:
+        if 'fuses' == periph.name.lower():
+            outfile.write(_get_fuse_SECTIONS(unique_addr_spaces, periph))
+            break
+
+    outfile.write('}\n')
 
 
 def _remove_overlapping_memory(address_spaces: list[DeviceAddressSpace]) -> list[DeviceAddressSpace]:
@@ -206,13 +218,13 @@ def _get_MEMORY_command(address_spaces: list[DeviceAddressSpace]) -> str:
 
     return memory_cmd
 
-def _get_SECTIONS_command(address_spaces: list[DeviceAddressSpace]) -> str:
-    '''Return the SECTIONS command for GNU linker scripts that indicates how object file sections
-    will map into the memory regions from the MEMORY command.
+def _get_standard_SECTIONS() -> str:
+    '''Return the standard sections that would be in a SECTIONS command for Arm linker scripts.
+     
+    The SECTIONS command indicates how object file sections will map into the memory regions from
+    the MEMORY command.
     '''
-    sections_cmd: str = '''
-        SECTIONS
-        {
+    sections_cmd: str = textwrap.dedent('''
           .text :
           {
             KEEP(*(.vectors))
@@ -416,7 +428,36 @@ def _get_SECTIONS_command(address_spaces: list[DeviceAddressSpace]) -> str:
 
           /* Check if data + heap + stack exceeds RAM limit */
           ASSERT(__StackLimit >= __HeapLimit, "region RAM overflowed with stack")
-        }
-        '''
+        ''')
 
-    return textwrap.dedent(sections_cmd)
+    return textwrap.indent(sections_cmd, '  ')
+
+def _get_fuse_SECTIONS(addr_spaces: list[DeviceAddressSpace], fuses: PeripheralGroup) -> str:
+    '''Create special output sections for the given peripherals assuming they are fuses. This will
+    look through the address spaces to find one to which they belong.
+    '''
+    fuse_str: str = ''
+
+    for inst in fuses.instances:
+        for ref in inst.reg_group_refs:
+            section_addr = ref.offset + _find_start_of_address_space(addr_spaces, ref.addr_space)
+            section_name = '.' + ref.instance_name.lower()
+
+            fuse_str += f'\n{section_name} 0x{section_addr :08X} READONLY :\n'
+            fuse_str += '{\n'
+            fuse_str += f'  KEEP(*({section_name}))\n'
+            fuse_str += '}\n'
+
+    return textwrap.indent(fuse_str, '  ')
+
+def _find_start_of_address_space(addr_spaces: list[DeviceAddressSpace], name: str) -> int:
+    '''Search the list of address spaces for the one with the given name and return its start
+    address.
+
+    Returns 0 if the named space is not found.
+    '''
+    for space in addr_spaces:
+        if name == space.id:
+            return space.start_addr
+
+    return 0
