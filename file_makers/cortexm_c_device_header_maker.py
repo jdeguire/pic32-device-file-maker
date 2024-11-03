@@ -46,11 +46,9 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: 
     outfile.write(_get_file_prologue(devinfo.name))
     outfile.write('\n')
 
-    outfile.write('#ifndef __ASSEMBLER__\n\n')
-    outfile.write('/* ----- Interrupt Number Enumeration ----- */\n')
+    outfile.write('/* ----- Interrupt Vector Enumeration ----- */\n')
     outfile.write(_get_interrupt_enum(devinfo.interrupts))
-#TODO: We need to output the function prototypes for the vectors and the declaration for the vector struct.
-    outfile.write('\n#endif /* ifndef __ASSEMBLER__ */\n\n')
+    outfile.write('\n\n')
 
     outfile.write('/* ----- Core Configuration Macros ----- */\n')
     outfile.write(_get_parameter_macros(devinfo.parameters))
@@ -76,12 +74,9 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: 
     outfile.write(_get_peripheral_headers(devinfo.peripherals, periph_prefix))
     outfile.write('\n\n')
 
-    outfile.write('#ifndef __ASSEMBLER__\n\n')
     outfile.write('/* ----- Device Peripheral Address Macros ----- */\n')
     outfile.write(_get_peripheral_address_macros(devinfo.peripherals, devinfo.address_spaces))
     outfile.write('\n\n')
-    outfile.write('\n#endif /* ifndef __ASSEMBLER__ */\n\n')
-#TODO: We need to output BASE_ADDR macros to use in asm.
 
     outfile.write('/* ----- Device Peripheral Instance Parameters ----- */\n')
     for periph in devinfo.peripherals:
@@ -99,7 +94,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: 
         if 'fuses' == fp.name.lower():
             outfile.write('/* ----- Device Configuration Fuses ----- */\n')
             outfile.write(f'#include "{fuse_prefix}{devinfo.name.lower()}.h"\n\n')
-            outfile.write(_get_device_fuse_declarations(fp))
+            outfile.write(_get_device_fuse_declarations(fp, devinfo.address_spaces))
             outfile.write('\n\n')
             break
 
@@ -140,13 +135,11 @@ def _get_file_prologue(devname: str) -> str:
     return prologue
 
 def _get_interrupt_enum(interrupts: list[DeviceInterrupt]) -> str:
-    '''Return a string containing a C enum that provides values for all of the device interrupts.
+    '''Return a string containing a C enumerations for the device interrupts.
     '''
-    enum_str: str = textwrap.dedent('''
-        typedef enum IRQn
-        {
-        ''')
+    enum_str: str = 'typedef enum IRQn\n{\n'
 
+    current_index = interrupts[0].index
     for interrupt in interrupts:
         name = interrupt.name + '_IRQn'
         index = interrupt.index
@@ -155,7 +148,9 @@ def _get_interrupt_enum(interrupts: list[DeviceInterrupt]) -> str:
 
     enum_str += '} IRQn_Type;\n'
 
-    return enum_str
+    return ('#ifndef __ASSEMBLER__\n' +
+            enum_str +
+            '#endif /* ifndef __ASSEMBLER__ */\n')
 
 def _get_parameter_macros(parameters: list[ParameterValue], prefix: str = '') -> str:
     '''Return a string containing C macros defining the given parameters and their values.
@@ -220,7 +215,8 @@ def _get_peripheral_address_macros(peripherals: list[PeripheralGroup],
     The macros also cast the address to a pointer to a device-specific structure. These do not
     include device fuses or core peripherals. 
     '''
-    macros: str = ''
+    base_macros: str = ''
+    decl_macros: str = ''
 
     for periph in peripherals:
         if _peripheral_is_special(periph):
@@ -228,16 +224,23 @@ def _get_peripheral_address_macros(peripherals: list[PeripheralGroup],
 
         for instance in periph.instances:
             for group_ref in instance.reg_group_refs:
-                macro_name = group_ref.instance_name.upper() + '_REGS'
+                base_macro_name = group_ref.instance_name.upper() + '_REGS_BASE'
+                decl_macro_name = group_ref.instance_name.upper() + '_REGS'
                 macro_type = group_ref.module_name.lower() + '_regs_t'
                 macro_addr = (group_ref.offset + 
                               _find_start_of_address_space(address_spaces, group_ref.addr_space))
 
-                macros += f'#define {macro_name :<32} ((volatile {macro_type}*)0x{macro_addr :08X})\n'
+                base_macros += f'#define {base_macro_name :<32} (0x{macro_addr :08X}ul)\n'
+                decl_macros += f'#define {decl_macro_name :<32} ((volatile {macro_type}*){base_macro_name})\n'
 
-    return macros
+    return (base_macros + 
+            '\n#ifndef __ASSEMBLER__\n' +
+            decl_macros +
+            '#endif /* ifndef __ASSEMBLER__ */\n')
 
-def _get_device_fuse_declarations(fuse_periph: PeripheralGroup) -> str:
+def _get_device_fuse_declarations(fuse_periph: PeripheralGroup, 
+                                  addr_spaces: list[DeviceAddressSpace]
+                                 ) -> str:
     '''Return a string of declarations for the given periepheral group assuming the group represents
     a set of device fuses.
 
@@ -245,19 +248,28 @@ def _get_device_fuse_declarations(fuse_periph: PeripheralGroup) -> str:
     so they can be programmed onto the device. The linker script for this device will need to have
     output sections for these.
     '''
-    fuses_str: str = ''
+    base_str: str = ''
+    decl_str: str = ''
 
     for instance in fuse_periph.instances:
         for group_ref in instance.reg_group_refs:
-            type_name = group_ref.module_name.lower() + '_t'
+            type_name = 'cfg_' + group_ref.module_name.lower() + '_t'
             section_name = '.' + group_ref.instance_name.lower()
             variable_name = 'CFG_' + group_ref.instance_name.upper()
 
-            fuses_str += f'extern const {type_name} '
-            fuses_str += f'__attribute__((used, retain, section("{section_name}"))) '
-            fuses_str += variable_name + ';\n'
+            base_macro_name = variable_name + '_BASE'
+            base_addr = (group_ref.offset + 
+                        _find_start_of_address_space(addr_spaces, group_ref.addr_space))
+            base_str += f'#define {base_macro_name :<32} (0x{base_addr :08X}ul)\n'
 
-    return fuses_str
+            decl_str += f'extern const {type_name} '
+            decl_str += f'__attribute__((used, retain, section("{section_name}"))) '
+            decl_str += variable_name + ';\n'
+
+    return (base_str + 
+            '\n#ifndef __ASSEMBLER__\n' +
+            decl_str +
+            '#endif /* ifndef __ASSEMBLER__ */\n')
 
 def _get_file_epilogue(devname: str) -> str:
     '''Return a string with the file epilogue, which is the stuff at the end of the file like

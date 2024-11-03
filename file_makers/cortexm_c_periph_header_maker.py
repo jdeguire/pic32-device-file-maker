@@ -320,11 +320,11 @@ def _get_base_groupdef_name(periph_name: str, group_name: str, mode_name: str = 
     start of the group name if needed. If the group name is then empty, the resulting name will be
     "periph_mode_regs" or "periph_regs" if a mode is not provided. The name is all lower-case.
 
-    Fuses are a special case and will return just group name in lower case.
+    Fuses are a special case and will return "cfg_" followed by the group name in lower case.
     '''
     # For now, assume that fuses are in a peripheral called FUSES.
     if 'fuses' == periph_name.lower():
-        return group_name.lower().replace('__', '_')
+        return 'cfg_' + group_name.lower().replace('__', '_')
     else:
         if group_name.startswith(periph_name):
             group_name = group_name[len(periph_name):]
