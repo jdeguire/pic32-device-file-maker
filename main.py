@@ -128,6 +128,8 @@ if '__main__' == __name__:
     peripheral_header_prefix = 'periph/'
     fuses_header_prefix = 'fuses/'
 
+    device_families: dict[str, list[str]] = {}
+
     # Make the files specific to each device and collect their perpiherals so we can make
     # those later. 
     for p in get_atdf_paths_from_dir(packs_dir):
@@ -163,10 +165,6 @@ if '__main__' == __name__:
             cortexm_c_device_header_maker.run(devinfo, hdr, peripheral_header_prefix, 
                                               fuses_header_prefix)
 
-        # Make a dict of peripherals we need to make. Doing this ensures we make each unique
-        # peripheral only once. We do not need to make core peripherals because they are already
-        # defined in CMSIS headers.
-        #
         # Device fuses are a special peripheral, so look for those and handle them here. Assume
         # each device has at most one fuse peripheral called FUSES for now. You can find the special
         # handling this app does for fuses by searching for 'fuses' with the single quotes.
@@ -182,15 +180,43 @@ if '__main__' == __name__:
                 with open(fuses_header_loc, 'w', encoding='utf-8', newline='\n') as hdr:
                     basename = devinfo.name.lower() + '_fuses'
                     cortexm_c_periph_header_maker.run(basename, periph, hdr)
-            elif periph.id  and  'system_ip' not in periph.id.lower():
+
+        # Make a dict of peripherals we need to make. Doing this ensures we make each unique
+        # peripheral only once. We do not need to make core peripherals because they are already
+        # defined in CMSIS headers.
+        #
+        for periph in devinfo.peripherals:
+            if 'fuses' != periph.name.lower()  and  periph.id  and  'system_ip' not in periph.id.lower():
                 full_name = 'cortexm_' + periph.name + '_' + periph.id
 
                 if full_name not in peripherals_to_make:
                     peripherals_to_make[full_name] = periph
 
+        # C interrupt vectors file
+        #
+        vectors_src_path = output_path / 'lib' / 'cortex-m' / 'proc'
+        vectors_src_name = devinfo.name.lower() + '_vectors.c'
+        vectors_src_loc = vectors_src_path / vectors_src_name
+
+        os.makedirs(vectors_src_path, exist_ok = True)
+
+        with open(vectors_src_loc, 'w', encoding='utf-8', newline='\n') as vec:
+            proc_header_name = 'which_pic32.h'
+            cortexm_c_vectors_maker.run(proc_header_name, devinfo.interrupts, vec)
+
+
+        # Gather device names and families we can use to make an all-encompassing processor header
+        # file. That is, instead of including the individual processor header in your project, you
+        # can be lazy and include this one to let it figure out what processor you have.
+        #
+        family = 'cortexm_' + devinfo.family.upper()
+        if family in device_families:
+            device_families[family].append(devinfo.name)
+        else:
+            device_families[family] = [devinfo.name]
+
         # TODO: We will need to gather a list of device names and families if we want an xc.h sort of file.
         # TODO: We still need configuration files containing options to pass to Clang.
-        # TODO: We still need a file containing the device vectors and structure.
         # TODO: We need to copy the Apache license to the output somewhere.
         # TODO: We need to implement startup code, but that can probably be made common to all devices.
         #       This is especially true if we can put the vectors into their own file.
@@ -211,5 +237,66 @@ if '__main__' == __name__:
 
             with open(periph_header_loc, 'w', encoding='utf-8', newline='\n') as hdr:
                 cortexm_c_periph_header_maker.run(periph_name, val, hdr)
+
+    # Make the all-encompassing processor header file.
+    #
+    big_proc_header_path = output_path / 'include' / 'cortex-m'
+    big_proc_header_base = 'which_pic32'
+    big_proc_header_name = big_proc_header_base + '.h'
+    big_proc_header_loc = big_proc_header_path / big_proc_header_name
+
+    os.makedirs(big_proc_header_path, exist_ok = True)
+
+    print(f'Creating big processor header')
+
+    with open(big_proc_header_loc, 'w', encoding='utf-8', newline='\n') as hdr:
+        # Write the header block with copyright info.
+        hdr.write('/*\n')
+        hdr.write(strings.get_generated_by_string(' * '))
+        hdr.write(' * \n')
+        hdr.write(strings.get_non_cmsis_apache_license(' * '))
+        hdr.write(' */\n\n')
+
+        # Include guard
+        hdr.write(f'#ifndef {big_proc_header_base.upper()}_H_\n')
+        hdr.write(f'#define {big_proc_header_base.upper()}_H_\n\n')
+
+        first_family = True
+        for family,devices in device_families.items():
+            if not family.startswith('cortexm_'):
+                continue
+
+            family = family.split('_', 1)[1]
+
+            if first_family:
+                hdr.write(f'#if defined(__{family})\n')
+            else:
+                hdr.write(f'#elif defined(__{family})\n')
+            
+            first_family = False
+
+            first_dev = True
+            for d in devices:
+                name = d.upper()
+
+                if first_dev: 
+                    hdr.write(f'#  if defined(__{name}__)\n')
+                else:
+                    hdr.write(f'#  elif defined(__{name}__)\n')
+                
+                first_dev = False
+
+                hdr.write(f'#    include "proc/{d.lower()}.h"\n')
+            
+            hdr.write('#  else\n')
+            hdr.write(f'#    error Unknown device for {family} family!\n')
+            hdr.write('#  endif\n')
+
+        hdr.write('#else\n')
+        hdr.write('#  error Unknown device family!\n')
+        hdr.write('#endif\n')
+
+        hdr.write(f'\n#endif /* ifndef {big_proc_header_base.upper()}_H_ */\n')
+
 
     exit(0)
