@@ -35,7 +35,6 @@ https://github.com/ARM-software/CMSIS_6/blob/main/CMSIS/Core/Template/Device_M/I
 '''
 
 from device_info import *
-import operator
 from . import strings
 from typing import IO
 

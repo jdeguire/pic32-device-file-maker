@@ -36,7 +36,6 @@ https://github.com/ARM-software/CMSIS_6/blob/main/CMSIS/Core/Template/Device_M/I
 from device_info import *
 from . import strings
 from . import version
-import textwrap
 from typing import IO
 
 
