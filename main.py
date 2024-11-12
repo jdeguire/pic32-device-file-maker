@@ -69,6 +69,7 @@ from pathlib import Path
 import shutil
 import tkinter
 import tkinter.filedialog
+from typing import IO
 
 
 def get_dir_from_dialog(title: str | None = None, mustexist: bool = True) -> str:
@@ -99,9 +100,116 @@ def get_atdf_paths_from_dir(packs_dir: str) -> list[Path]:
 
     return atdf_paths
 
+def create_all_processors_header(hdr: IO[str],
+                                 basename: str,
+                                 device_families: dict[str, list[str]]
+                                 ) -> None:
+    '''Make a big header file that encompasses all of the devices for which this app has made files.
+
+    This lets a user include a single header file that will find the correct device header file
+    based on macros instead of requiring a user to always remember to include the device-specific
+    header file. The inputs are the file-like object to which the data will be written, the base
+    name of the file without path or extension, and a dict of device families to lists of devices.
+    ''' 
+    # Write the header block with copyright info.
+    hdr.write('/*\n')
+    hdr.write(strings.get_generated_by_string(' * '))
+    hdr.write(' * \n')
+    hdr.write(strings.get_non_cmsis_apache_license(' * '))
+    hdr.write(' */\n\n')
+
+    # Include guard
+    hdr.write(f'#ifndef {basename.upper()}_H_\n')
+    hdr.write(f'#define {basename.upper()}_H_\n\n')
+
+    first_family = True
+    for family,devices in device_families.items():
+        if not family.startswith('cortexm_'):
+            continue
+
+        family = family.split('_', 1)[1]
+
+        if first_family:
+            hdr.write(f'#if defined(__{family})\n')
+        else:
+            hdr.write(f'#elif defined(__{family})\n')
+        
+        first_family = False
+
+        first_dev = True
+        for d in devices:
+            name = d.upper()
+
+            if first_dev: 
+                hdr.write(f'#  if defined(__{name}__)\n')
+            else:
+                hdr.write(f'#  elif defined(__{name}__)\n')
+            
+            first_dev = False
+
+            hdr.write(f'#    include "proc/{d.lower()}.h"\n')
+        
+        hdr.write('#  else\n')
+        hdr.write(f'#    error Unknown device for {family} family!\n')
+        hdr.write('#  endif\n')
+
+    hdr.write('#else\n')
+    hdr.write('#  error Unknown device family!\n')
+    hdr.write('#endif\n')
+
+    hdr.write(f'\n#endif /* ifndef {basename.upper()}_H_ */\n')
+
+def remove_file_tag(file_line: str, tagname: str) -> tuple[str, str]:
+    '''Remove a tag, such as {LICENSE: ... } and {DEST: ... } from the given line, return the rest
+    of the contents within the braces after being trimmed of whitespace and the stuff that was 
+    before the tag.
+    '''
+    tag = file_line.split(f'{{{tagname}:', 1)     # Split start of tag
+    tag[1] = tag[1].split('}', 1)[0]            # Remove '}' from end of tag
+    tag[1] = tag[1].strip()                     # Removing leading and trailing whitespace
+    return (tag[1], tag[0])
+
+def copy_premade_files(src_dir: str, dest_dir: str) -> None:
+    '''Copy the premade files from the premade src directory to their appropriate destinations.
+
+    This currently will not go into subdirectories. 
+    
+    Each premade file can optionally have tags at the top of them to indicate some extra info. The
+    "{DEST:...}" tag indicates the destination and the "{LICENSE:...}" tag indicates that a license
+    needs to be added to that location. There can be only one tag per line.
+    '''
+    file_list: list[str] = [f for f in os.listdir(src_dir) if os.path.isfile(os.path.join(src_dir, f))]
+
+    for f in file_list:
+        contents = ''
+        file_dest = f
+
+        with open(os.path.join(src_dir, f), 'r', encoding='utf-8') as f_in:
+            for l in f_in:
+                if '{DEST:' in l:
+                    file_dest, _ = remove_file_tag(l, 'DEST')
+                elif '{LICENSE:' in l:
+                    license_type, prefix = remove_file_tag(l, 'LICENSE')
+                    prefix += ' '
+
+                    contents += strings.get_generated_by_string(prefix)
+                    contents += prefix + '\n'
+                    if 'NON-CMSIS' in license_type:
+                        contents += strings.get_non_cmsis_apache_license(prefix)
+                    elif 'CMSIS' in license_type:
+                        contents += strings.get_cmsis_apache_license(prefix)
+                    contents += prefix + '\n'
+                else:
+                    contents += l
+
+        outpath = os.path.normpath(dest_dir + '/' + file_dest)
+        os.makedirs(os.path.dirname(outpath), exist_ok = True)
+
+        with open(outpath, 'w', encoding='utf-8', newline='\n') as f_out:
+            f_out.write(contents)
+        
 
 if '__main__' == __name__:
-# TODO: Should I move DeviceInfo into the file_makers module?
 # TODO: Remove this hardcoded path when I'm doing testing.
 #    packs_dir = get_dir_from_dialog(title='Open packs directory')
     packs_dir = '/home/jesse/projects/packs'
@@ -127,17 +235,17 @@ if '__main__' == __name__:
     for p in get_atdf_paths_from_dir(packs_dir):
         atdf = AtdfReader(p)
 
-        if not atdf.get_device_arch().startswith('cortex-m'):
+        if not atdf.get_device_cpu().startswith('cortex-m'):
             continue
 
-        print(f'Creating files for device {atdf.get_device_name()} ({atdf.get_device_arch()})')
+        print(f'Creating files for device {atdf.get_device_name()} ({atdf.get_device_cpu()})')
 
         devinfo = atdf.get_all_device_info()
 
         # Linker script
         #
-        ld_path = output_path / 'cortex-m' / 'lib' / 'proc'
-        ld_name = devinfo.name.lower() + '.ld'
+        ld_path = output_path / 'cortex-m' / 'lib' / 'proc' / devinfo.name.lower()
+        ld_name = 'default.ld'
         ld_loc = ld_path / ld_name
 
         os.makedirs(ld_path, exist_ok = True)
@@ -186,8 +294,8 @@ if '__main__' == __name__:
 
         # C interrupt vectors file
         #
-        vectors_src_path = output_path / 'cortex-m' / 'lib' / 'proc'
-        vectors_src_name = devinfo.name.lower() + '_vectors.c'
+        vectors_src_path = output_path / 'cortex-m' / 'lib' / 'proc' / devinfo.name.lower()
+        vectors_src_name = 'vectors.c'
         vectors_src_loc = vectors_src_path / vectors_src_name
 
         os.makedirs(vectors_src_path, exist_ok = True)
@@ -205,7 +313,7 @@ if '__main__' == __name__:
         os.makedirs(config_path, exist_ok = True)
 
         with open(config_loc, 'w', encoding='utf-8', newline='\n') as cfg:
-            default_ld_loc = os.path.relpath(ld_loc, config_loc)
+            default_ld_loc = os.path.relpath(ld_loc, config_path)
             cortexm_config_file_maker.run(devinfo, cfg, default_ld_loc)
 
 
@@ -219,10 +327,9 @@ if '__main__' == __name__:
         else:
             device_families[family] = [devinfo.name]
 
-        # TODO: We need to copy the Apache license to the output somewhere.
         # TODO: We need to implement startup code, but that can probably be made common to all devices.
         #       This is especially true if we can put the vectors into their own file.
-
+    # End for-loop
 
     # Make all of the peripheral implementation C headers. These are shared among various devices.
     #
@@ -249,56 +356,15 @@ if '__main__' == __name__:
 
     os.makedirs(big_proc_header_path, exist_ok = True)
 
-    print(f'Creating big processor header')
-
+    print('Creating big processor header')
     with open(big_proc_header_loc, 'w', encoding='utf-8', newline='\n') as hdr:
-        # Write the header block with copyright info.
-        hdr.write('/*\n')
-        hdr.write(strings.get_generated_by_string(' * '))
-        hdr.write(' * \n')
-        hdr.write(strings.get_non_cmsis_apache_license(' * '))
-        hdr.write(' */\n\n')
+        create_all_processors_header(hdr, big_proc_header_base, device_families)
 
-        # Include guard
-        hdr.write(f'#ifndef {big_proc_header_base.upper()}_H_\n')
-        hdr.write(f'#define {big_proc_header_base.upper()}_H_\n\n')
-
-        first_family = True
-        for family,devices in device_families.items():
-            if not family.startswith('cortexm_'):
-                continue
-
-            family = family.split('_', 1)[1]
-
-            if first_family:
-                hdr.write(f'#if defined(__{family})\n')
-            else:
-                hdr.write(f'#elif defined(__{family})\n')
-            
-            first_family = False
-
-            first_dev = True
-            for d in devices:
-                name = d.upper()
-
-                if first_dev: 
-                    hdr.write(f'#  if defined(__{name}__)\n')
-                else:
-                    hdr.write(f'#  elif defined(__{name}__)\n')
-                
-                first_dev = False
-
-                hdr.write(f'#    include "proc/{d.lower()}.h"\n')
-            
-            hdr.write('#  else\n')
-            hdr.write(f'#    error Unknown device for {family} family!\n')
-            hdr.write('#  endif\n')
-
-        hdr.write('#else\n')
-        hdr.write('#  error Unknown device family!\n')
-        hdr.write('#endif\n')
-
-        hdr.write(f'\n#endif /* ifndef {big_proc_header_base.upper()}_H_ */\n')
-
+    # Copy the premade files to their proper destinations.
+    #
+    premade_src = our_path / 'premade'
+    premade_dst = output_path
+    print(f'Copying premade files')
+    copy_premade_files(premade_src.as_posix(), premade_dst.as_posix())
 
     exit(0)

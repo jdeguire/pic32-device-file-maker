@@ -108,7 +108,7 @@ class AtdfReader:
         '''Return a DeviceInfo structure with all of the info from below functions added to it.
         '''
         return DeviceInfo(name = self.get_device_name(),
-                          arch = self.get_device_arch(),
+                          cpu = self.get_device_cpu(),
                           family = self.get_device_family(),
                           series = self.get_device_series(),
                           pincount = self.get_device_pincount(),
@@ -138,14 +138,17 @@ class AtdfReader:
         else:
             return ''
 
-    def get_device_arch(self) -> str:
-        '''Get the architecture of the device as a lower-case string, such as "mips" or "cortex-m4".
+    def get_device_cpu(self) -> str:
+        '''Get the cpu name of the device as a lower-case string, such as "mips" or "cortex-m4".
 
-        This will return an empty string if the architecture was not found.
+        This will return an empty string if the cpu name was not found.
         '''
         element: Element | None = self.root.find(AtdfReader.device_path)
         
         if element is not None:
+            # The tag is "architecture", but we use that to refer to ARMv7-M vs ARMv8M whereas the
+            # ATDF files use that to refer to what we are calling the CPU name. Our usage matches
+            # how LLVM and GCC options work.
             return AtdfReader.get_str(element, 'architecture').lower()
         else:
             return ''

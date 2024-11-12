@@ -35,7 +35,7 @@ read these individual structures and one to read out everything into the big Dev
 This is a big structure, so here is a tree showing all of its members.
 
 name : str
-arch : str
+cpu : str
 family : str
 series : str
 pincount : int
@@ -263,7 +263,7 @@ class DeviceInfo:
     within it.
     '''
     name: str
-    arch: str
+    cpu: str
     family: str
     series: str
     pincount: int

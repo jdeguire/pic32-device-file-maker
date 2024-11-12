@@ -66,7 +66,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: 
     outfile.write('\n\n')
 
     outfile.write('/* ----- CMSIS Core and Peripherals Header ----- */\n')
-    outfile.write('#include <core_' + devinfo.arch.split('-')[1].lower() + '.h>\n')
+    outfile.write('#include <core_' + devinfo.cpu.split('-')[1].lower() + '.h>\n')
     outfile.write('\n\n')
 
     outfile.write('/* ----- Device Peripheral Headers ----- */\n')

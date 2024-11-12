@@ -33,6 +33,7 @@ options needed for the desired target.
 '''
 
 from device_info import *
+import os
 from . import strings
 from typing import IO
 
@@ -57,7 +58,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str], default_ld_path: str) -> None:
 
     outfile.write('# Point to device-specific lib directory.\n')
     outfile.write('# This is where the vectors code is located.\n')
-    outfile.write(f'-L <CFGDIR>/{default_ld_path}\n\n')
+    outfile.write(f'-L <CFGDIR>/{os.path.dirname(default_ld_path)}\n\n')
 
     outfile.write('# Set default linker script.\n')
     outfile.write('# This is used only if -T is not specified at link time.\n')
@@ -90,14 +91,14 @@ def _get_file_prologue() -> str:
 def _get_target_arch_options(devinfo: DeviceInfo) -> str:
     '''Return a string containing the options specifying the target and its architecture.
     '''
-    isa_name: str = _get_isa_from_cpu_name(devinfo.arch)
+    arch_name: str = _get_arch_from_cpu_name(devinfo.cpu)
     fpu_width: int = _get_fpu_width(devinfo)
-    fpu_name: str = _get_fpu_name(isa_name, fpu_width)
-    mve_ext: str = _get_mve_extension(isa_name, fpu_width)
+    fpu_name: str = _get_fpu_name(arch_name, fpu_width)
+    mve_ext: str = _get_mve_extension(arch_name, fpu_width)
 
     target_str: str = '-target arm-arm-none-eabi\n'
 
-    arch_str = f'-march={isa_name}'
+    arch_str = f'-march={arch_name}'
     if mve_ext:
         arch_str += f'+{mve_ext}'
     arch_str += '\n'
@@ -109,7 +110,7 @@ def _get_target_arch_options(devinfo: DeviceInfo) -> str:
         fpu_str = '-mfpu=none\n-mfloat-abi=soft\n'
 
     cmse_str: str = ''
-    if _has_cmse_extension(isa_name):
+    if _has_cmse_extension(arch_name):
         cmse_str = '-mcmse\n'
 
     return target_str + arch_str + fpu_str + cmse_str
@@ -169,18 +170,18 @@ def _get_target_macros(devinfo: DeviceInfo) -> dict[str, str]:
     macros['__PIC32_PIN_COUNT'] = str(devinfo.pincount)
     macros['__PIC32_PIN_COUNT__'] = str(devinfo.pincount)
 
-    cpu_name = devinfo.arch
-    isa = _get_isa_from_cpu_name(cpu_name)
+    cpu_name = devinfo.cpu
+    arch = _get_arch_from_cpu_name(cpu_name)
     macros['__PIC32_DEVICE_NAME'] = '"' + name + '"'
     macros['__PIC32_DEVICE_NAME__'] = '"' + name + '"'
     macros['__PIC32_CPU_NAME'] = '"' + cpu_name + '"'
     macros['__PIC32_CPU_NAME__'] = '"' + cpu_name + '"'
-    macros['__PIC32_ISA'] = '"' + isa + '"'
-    macros['__PIC32_ISA__'] = '"' + isa + '"'
+    macros['__PIC32_ARCH'] = '"' + arch + '"'
+    macros['__PIC32_ARCH__'] = '"' + arch + '"'
 
     return macros
 
-def _get_isa_from_cpu_name(cpuname: str) -> str:
+def _get_arch_from_cpu_name(cpuname: str) -> str:
     '''Get the Arm ISA version, such as "armv7em", from its CPU name, such as "cortex-m7".
     '''
     # Presume the "cortex-" part is there and remove it to make the matching a bit easier to read.
@@ -202,14 +203,14 @@ def _get_isa_from_cpu_name(cpuname: str) -> str:
         case _:
             raise RuntimeError(f'Unknown CPU name {cpuname}!') 
 
-def _get_fpu_name(isa: str, fpu_width: int) -> str:
+def _get_fpu_name(arch: str, fpu_width: int) -> str:
     '''Return the FPU extension name to be passed to the compiler or an empty string if the device
     does not support an FPU.
     '''
     if _FPU_NONE == fpu_width:
         return ''
 
-    match isa:
+    match arch:
         case 'armv7e-m':
             if _FPU_DP & fpu_width:
                 return 'fpv5-dp-d16'
@@ -217,19 +218,19 @@ def _get_fpu_name(isa: str, fpu_width: int) -> str:
                 return 'fpv4-sp-d16'
         case 'armv8-m.main':
             if _FPU_DP & fpu_width:
-                raise RuntimeError(f'ISA {isa} unexpectedly has a double-precision FPU!')
+                raise RuntimeError(f'Arch {arch} unexpectedly has a double-precision FPU!')
             else:
                 return 'fpv5-sp-d16'
         case 'armv8.1-m.main':
             if _FPU_DP & fpu_width:
                 return 'fp-armv8-fullfp16-d16'
             else:
-                raise RuntimeError(f'ISA {isa} unexpectedly has a single-precision FPU!')
+                raise RuntimeError(f'Arch {arch} unexpectedly has a single-precision FPU!')
         case _:
             # Default to no FPU.
             return ''
 
-def _get_mve_extension(isa: str, fpu_width: int) -> str:
+def _get_mve_extension(arch: str, fpu_width: int) -> str:
     '''Return the MVE (M-Profile Vector Extensions) name to be passed to the compiler or an empty
     string if the device dose not support MVE.
     '''
@@ -237,7 +238,7 @@ def _get_mve_extension(isa: str, fpu_width: int) -> str:
 
     # The first ISA to support MVE is ARMv8.1-M.main. Assume that further point releases, like v8.2,
     # will also support it in the main profile
-    if 'armv8.' in isa  and  'main' in isa:
+    if 'armv8.' in arch  and  'main' in arch:
         if _FPU_DP & fpu_width:
             mve = 'mve.fp+fp.dp'
         elif _FPU_SP & fpu_width:
@@ -247,10 +248,10 @@ def _get_mve_extension(isa: str, fpu_width: int) -> str:
 
     return mve
 
-def _has_cmse_extension(isa: str) -> bool:
+def _has_cmse_extension(arch: str) -> bool:
     '''Return True if the device supports the Cortex-M Security Extensions.
     '''
-    return 'armv8' in isa
+    return 'armv8' in arch
 
 def _get_fpu_width(devinfo: DeviceInfo) -> int:
     '''Return a value to indicate the width of the types supported by the device's FPU.
