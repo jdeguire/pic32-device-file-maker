@@ -340,6 +340,8 @@ def _get_reg_type_from_size(size: int) -> str:
     '''Return a C99 type to be used with the given size, such as uint32_t for something that is
     four bytes.
     '''
+    if size > 8:
+        raise RuntimeError(f'Invalid size {size} for register type!')
     if size > 4:
         return 'uint64_t'
     elif size > 2:

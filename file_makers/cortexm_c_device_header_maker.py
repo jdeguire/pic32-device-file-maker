@@ -97,7 +97,6 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: 
             outfile.write('\n\n')
             break
 
-#TODO: We will need special handling for device fuses.
     outfile.write(_get_file_epilogue(devinfo.name))
 
 
@@ -138,7 +137,6 @@ def _get_interrupt_enum(interrupts: list[DeviceInterrupt]) -> str:
     '''
     enum_str: str = 'typedef enum IRQn\n{\n'
 
-    current_index = interrupts[0].index
     for interrupt in interrupts:
         name = interrupt.name + '_IRQn'
         index = interrupt.index
@@ -307,11 +305,9 @@ def _peripheral_is_special(periph: PeripheralGroup) -> bool:
 def _find_start_of_address_space(addr_spaces: list[DeviceAddressSpace], name: str) -> int:
     '''Search the list of address spaces for the one with the given name and return its start
     address.
-
-    Returns 0 if the named space is not found.
     '''
     for space in addr_spaces:
         if name == space.id:
             return space.start_addr
 
-    return 0
+    raise RuntimeError(f'Address space {name} could not be found!')

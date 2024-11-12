@@ -40,7 +40,8 @@ from typing import IO
 
 
 def run(proc_header_name: str, interrupts: list[DeviceInterrupt], outfile: IO[str]) -> None:
-    '''Make a C vector definition file for the given device assuming is a a PIC or SAM Cortex-M device.
+    '''Make a C vector definition file for the given device assuming it is a PIC or SAM Cortex-M
+    device.
 
     The proc_header_name is the name of a header file this can include to get processor-specific
     info. This can be the processor-specifc header file or an all-encompassing header that will
@@ -70,7 +71,8 @@ def _get_file_prologue(proc_header_name: str) -> str:
     prologue += ' * \n'
     prologue += strings.get_cmsis_apache_license(' * ')
     prologue += ' */\n\n'
-    prologue += f'#include <{proc_header_name}>\n\n'
+    prologue += f'#include <{proc_header_name}>\n'
+    prologue += '#include <stdint.h>\n\n'
     prologue += '/* Stack top provided by device linker script. */\n'
     prologue += 'extern uint32_t __stack;\n'
 
@@ -114,7 +116,7 @@ def _get_default_handlers() -> str:
         }
 
         /* ----- Reset Handler Declaration: Provided by the startup code ----- */
-        void __attribute__((noreturn)) Reset_Handler;
+        void __attribute__((noreturn)) Reset_Handler(void);
         ''')
 
 def _get_handler_declarations(interrupts: list[DeviceInterrupt]) -> str:

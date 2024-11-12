@@ -49,6 +49,7 @@ update the import statement for ElementTree below and in other modules to use it
 
 from device_info import *
 from pathlib import Path
+import re
 import xml.etree.ElementTree as ET
 from xml.etree.ElementTree import Element
 
@@ -56,6 +57,7 @@ from xml.etree.ElementTree import Element
 class AtdfReader:
     # These are relative to the root element, which points to the top-level node
     # "avr-tools-device-file".
+    variants_path: str = 'variants'
     device_path: str = 'devices/device'
     modules_path: str = 'modules'
 
@@ -108,6 +110,8 @@ class AtdfReader:
         return DeviceInfo(name = self.get_device_name(),
                           arch = self.get_device_arch(),
                           family = self.get_device_family(),
+                          series = self.get_device_series(),
+                          pincount = self.get_device_pincount(),
                           parameters = self.get_device_parameters(),
                           property_groups = self.get_device_propertes(),
                           address_spaces = self.get_device_memory(),
@@ -120,12 +124,17 @@ class AtdfReader:
         '''Get the name of the device like you would see on a datasheet.
 
         This does not return the extra order codes for things like temperature rating or package
-        type. For example, you would get back "ATSAME54P20A", not "ATSAME54P20A-CTU".
+        type. This will also return "SAM..." instead 'ATSAM..." for Atmel devices. For example, you
+        would get back "SAME54P20A", not "ATSAME54P20A-CTU" or "ATSAME54P20A".
         '''
         element: Element | None = self.root.find(AtdfReader.device_path)
 
         if element is not None:
-            return AtdfReader.get_str(element, 'name')
+            name = AtdfReader.get_str(element, 'name')
+            if name.upper().startswith('ATSAM'):
+                return name[2:]
+            else:
+                return name
         else:
             return ''
 
@@ -152,6 +161,45 @@ class AtdfReader:
             return AtdfReader.get_str(element, 'family')
         else:
             return ''
+
+    def get_device_series(self) -> str:
+        '''Get the family of the device, such as "SAME54", "PIC32CXSG41", and so on.
+
+        This will return an empty string if the family is not found.
+        '''
+        element: Element | None = self.root.find(AtdfReader.device_path)
+
+        if element is not None:
+            return AtdfReader.get_str(element, 'series')
+        else:
+            return ''
+
+    def get_device_pincount(self) -> int:
+        '''Get the number of pins on the device or 0 if this info could not be found.
+
+        Some devices, like the PIC32MX795F512L, are available in packages of different sizes even
+        though the number of usable pins (100 in this case) remains the same. This will use the
+        package with the lowest pin count to determine the number of pins.
+        '''
+        element: Element | None = self.root.find(AtdfReader.variants_path)
+
+        if element is None:
+            return 0
+        else:
+            min_pincount = 999999
+            for variant_element in element.findall('variant'):
+                package = AtdfReader.get_str(variant_element, 'package')
+                match = re.search(r'\d+$', package)
+
+                if match:
+                    package_pins = int(match.group())
+                    if package_pins < min_pincount:
+                        min_pincount = package_pins
+
+            if 999999 == min_pincount:
+                return 0
+            else:
+                return min_pincount
 
     def get_device_memory(self) -> list[DeviceAddressSpace]:
         '''Get a list of address spaces in this device, which in turn may contain memory regions.

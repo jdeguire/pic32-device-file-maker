@@ -99,15 +99,6 @@ def get_atdf_paths_from_dir(packs_dir: str) -> list[Path]:
 
     return atdf_paths
 
-def remake_dirs(dir):
-    '''Remove and make the given directory and its subdirectories.
-    
-    Use this to remove build directories so that a clean build is done.'''
-    if os.path.exists(dir):
-        shutil.rmtree(dir)
-
-    os.makedirs(dir)
-
 
 if '__main__' == __name__:
 # TODO: Should I move DeviceInfo into the file_makers module?
@@ -122,7 +113,8 @@ if '__main__' == __name__:
 
     our_path = Path(os.path.abspath(os.path.dirname(__file__)))
     output_path = our_path / 'pic32-device-files'
-    remake_dirs(output_path)
+    if os.path.exists(output_path):
+        shutil.rmtree(output_path)
 
     peripherals_to_make: dict[str, device_info.PeripheralGroup] = {}
     peripheral_header_prefix = 'periph/'
@@ -144,7 +136,7 @@ if '__main__' == __name__:
 
         # Linker script
         #
-        ld_path = output_path / 'lib' / 'cortex-m' / 'proc'
+        ld_path = output_path / 'cortex-m' / 'lib' / 'proc'
         ld_name = devinfo.name.lower() + '.ld'
         ld_loc = ld_path / ld_name
 
@@ -155,7 +147,7 @@ if '__main__' == __name__:
 
         # C device-specifc header file
         #
-        dev_header_path = output_path / 'include' / 'cortex-m' / 'proc'
+        dev_header_path = output_path / 'cortex-m' / 'include' / 'proc'
         dev_header_name = devinfo.name.lower() + '.h'
         dev_header_loc = dev_header_path / dev_header_name
 
@@ -171,7 +163,7 @@ if '__main__' == __name__:
         #
         for periph in devinfo.peripherals:
             if 'fuses' == periph.name.lower():
-                fuses_header_path = output_path / 'include' / 'cortex-m' / 'proc' / fuses_header_prefix
+                fuses_header_path = output_path / 'cortex-m' / 'include' / 'proc' / fuses_header_prefix
                 fuses_header_name = devinfo.name.lower() + '.h'
                 fuses_header_loc = fuses_header_path / fuses_header_name
 
@@ -194,7 +186,7 @@ if '__main__' == __name__:
 
         # C interrupt vectors file
         #
-        vectors_src_path = output_path / 'lib' / 'cortex-m' / 'proc'
+        vectors_src_path = output_path / 'cortex-m' / 'lib' / 'proc'
         vectors_src_name = devinfo.name.lower() + '_vectors.c'
         vectors_src_loc = vectors_src_path / vectors_src_name
 
@@ -203,6 +195,18 @@ if '__main__' == __name__:
         with open(vectors_src_loc, 'w', encoding='utf-8', newline='\n') as vec:
             proc_header_name = 'which_pic32.h'
             cortexm_c_vectors_maker.run(proc_header_name, devinfo.interrupts, vec)
+
+        # Clang configuration file
+        #
+        config_path = output_path / 'cortex-m' / 'config'
+        config_name = devinfo.name.lower() + '.cfg'
+        config_loc = config_path / config_name
+
+        os.makedirs(config_path, exist_ok = True)
+
+        with open(config_loc, 'w', encoding='utf-8', newline='\n') as cfg:
+            default_ld_loc = os.path.relpath(ld_loc, config_loc)
+            cortexm_config_file_maker.run(devinfo, cfg, default_ld_loc)
 
 
         # Gather device names and families we can use to make an all-encompassing processor header
@@ -215,8 +219,6 @@ if '__main__' == __name__:
         else:
             device_families[family] = [devinfo.name]
 
-        # TODO: We will need to gather a list of device names and families if we want an xc.h sort of file.
-        # TODO: We still need configuration files containing options to pass to Clang.
         # TODO: We need to copy the Apache license to the output somewhere.
         # TODO: We need to implement startup code, but that can probably be made common to all devices.
         #       This is especially true if we can put the vectors into their own file.
@@ -229,7 +231,7 @@ if '__main__' == __name__:
             periph_name = key.split('_', 1)[1].lower()
             print(f'Creating peripheral header for {periph_name}')
 
-            periph_header_path = output_path / 'include' / 'cortex-m' / 'proc' / peripheral_header_prefix
+            periph_header_path = output_path / 'cortex-m' / 'include' / 'proc' / peripheral_header_prefix
             periph_header_name = periph_name + '.h'
             periph_header_loc = periph_header_path / periph_header_name
 
@@ -240,7 +242,7 @@ if '__main__' == __name__:
 
     # Make the all-encompassing processor header file.
     #
-    big_proc_header_path = output_path / 'include' / 'cortex-m'
+    big_proc_header_path = output_path / 'cortex-m' / 'include'
     big_proc_header_base = 'which_pic32'
     big_proc_header_name = big_proc_header_base + '.h'
     big_proc_header_loc = big_proc_header_path / big_proc_header_name

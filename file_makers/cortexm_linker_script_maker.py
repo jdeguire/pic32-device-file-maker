@@ -453,11 +453,9 @@ def _get_fuse_SECTIONS(addr_spaces: list[DeviceAddressSpace], fuses: PeripheralG
 def _find_start_of_address_space(addr_spaces: list[DeviceAddressSpace], name: str) -> int:
     '''Search the list of address spaces for the one with the given name and return its start
     address.
-
-    Returns 0 if the named space is not found.
     '''
     for space in addr_spaces:
         if name == space.id:
             return space.start_addr
 
-    return 0
+    raise RuntimeError(f'Address space {name} could not be found!')

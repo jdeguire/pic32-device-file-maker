@@ -37,6 +37,8 @@ This is a big structure, so here is a tree showing all of its members.
 name : str
 arch : str
 family : str
+series : str
+pincount : int
 parameters : list[ParameterValue]
     name : str
     value : str
@@ -263,6 +265,8 @@ class DeviceInfo:
     name: str
     arch: str
     family: str
+    series: str
+    pincount: int
     parameters: list[ParameterValue]
     property_groups: list[PropertyGroup]
     address_spaces: list[DeviceAddressSpace]
