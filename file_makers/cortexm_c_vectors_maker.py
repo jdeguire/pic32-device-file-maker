@@ -74,7 +74,8 @@ def _get_file_prologue(proc_header_name: str) -> str:
     prologue += f'#include <{proc_header_name}>\n'
     prologue += '#include <stdint.h>\n\n'
     prologue += '/* Stack top provided by device linker script. */\n'
-    prologue += 'extern uint32_t __stack;\n'
+    prologue += '/* This is an alias defined by CMSIS. */\n'
+    prologue += 'extern uint32_t __INITIAL_SP;\n'
 
     return prologue
 
@@ -146,7 +147,7 @@ def _get_vector_table(interrupts: list[DeviceInterrupt]) -> str:
     of the stack to be loaded into the stack pointer register.
     '''
     intr_decls: list[str] = []
-    intr_decls.append('    (void (*)(void))&__stack,        /*     Initial Stack Pointer */')
+    intr_decls.append('    (void (*)(void))&__INITIAL_SP,   /*     Initial Stack Pointer */')
 
     current_index = interrupts[0].index
 
