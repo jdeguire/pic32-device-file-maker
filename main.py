@@ -327,8 +327,6 @@ if '__main__' == __name__:
         else:
             device_families[family] = [devinfo.name]
 
-        # TODO: We need to implement startup code, but that can probably be made common to all devices.
-        #       This is especially true if we can put the vectors into their own file.
     # End for-loop
 
     # Make all of the peripheral implementation C headers. These are shared among various devices.

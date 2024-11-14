@@ -218,7 +218,7 @@ def _get_fpu_name(arch: str, fpu_width: int) -> str:
     match arch:
         case 'armv7em':
             if _FPU_DP & fpu_width:
-                return 'fpv5-dp-d16'
+                return 'fpv5-d16'
             else:
                 return 'fpv4-sp-d16'
         case 'armv8m.main':
