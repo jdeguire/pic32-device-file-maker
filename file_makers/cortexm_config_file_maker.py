@@ -94,26 +94,30 @@ def _get_target_arch_options(devinfo: DeviceInfo) -> str:
     arch_name: str = _get_arch_from_cpu_name(devinfo.cpu)
     fpu_width: int = _get_fpu_width(devinfo)
     fpu_name: str = _get_fpu_name(arch_name, fpu_width)
-    mve_ext: str = _get_mve_extension(arch_name, fpu_width)
+    mve_ext: str = _get_mve_support(arch_name, fpu_width)
 
-    target_str: str = '-target arm-arm-none-eabi\n'
+    target_str: str = '-target arm-none-eabi\n'
 
     arch_str = f'-march={arch_name}'
     if mve_ext:
         arch_str += f'+{mve_ext}'
     arch_str += '\n'
 
-    fpu_str: str = ''
-    if fpu_name:
-        fpu_str += f'-mfpu={fpu_name}\n-mfloat-abi=hard\n'
+    fpu_str: str = f'-mfpu={fpu_name}\n'
+
+    # MVE uses the FPU registers, so that needs the hard float ABI even if normal FPU instructions
+    # are not present.
+    abi_str: str = ''
+    if 'none' == fpu_name  and  not mve_ext:
+        abi_str = '-mfloat-abi=soft\n'
     else:
-        fpu_str = '-mfpu=none\n-mfloat-abi=soft\n'
+        abi_str = '-mfloat-abi=hard\n'
 
     cmse_str: str = ''
     if _has_cmse_extension(arch_name):
         cmse_str = '-mcmse\n'
 
-    return target_str + arch_str + fpu_str + cmse_str
+    return target_str + arch_str + fpu_str + abi_str + cmse_str
 
 def _get_target_macros(devinfo: DeviceInfo) -> dict[str, str]:
     '''Return a set of target-specific macros that would be useful to reference in C and C++
@@ -172,10 +176,11 @@ def _get_target_macros(devinfo: DeviceInfo) -> dict[str, str]:
 
     cpu_name = devinfo.cpu
     arch = _get_arch_from_cpu_name(cpu_name)
-    macros['__PIC32_DEVICE_NAME'] = '"' + name + '"'
-    macros['__PIC32_DEVICE_NAME__'] = '"' + name + '"'
+    fpu_name = _get_fpu_name(arch, fpu_width)
     macros['__PIC32_CPU_NAME'] = '"' + cpu_name + '"'
     macros['__PIC32_CPU_NAME__'] = '"' + cpu_name + '"'
+    macros['__PIC32_FPU_NAME'] = '"' + fpu_name + '"'
+    macros['__PIC32_FPU_NAME__'] = '"' + fpu_name + '"'
     macros['__PIC32_ARCH'] = '"' + arch + '"'
     macros['__PIC32_ARCH__'] = '"' + arch + '"'
 
@@ -189,48 +194,48 @@ def _get_arch_from_cpu_name(cpuname: str) -> str:
 
     match cpu:
         case 'm0' | 'm0plus' | 'm1':
-            return 'armv6-m'
+            return 'armv6m'
         case 'm3':
-            return 'armv7-m'
+            return 'armv7m'
         case 'm4' | 'm7':
-            return 'armv7e-m'
+            return 'armv7em'
         case 'm23':
-            return 'armv8-m.base'
+            return 'armv8m.base'
         case 'm33' | 'm35' | 'm35p':
-            return 'armv8-m.main'
+            return 'armv8m.main'
         case 'm52' | 'm55' | 'm85':
-            return 'armv8.1-m.main'
+            return 'armv8.1m.main'
         case _:
             raise RuntimeError(f'Unknown CPU name {cpuname}!') 
 
 def _get_fpu_name(arch: str, fpu_width: int) -> str:
-    '''Return the FPU extension name to be passed to the compiler or an empty string if the device
+    '''Return the FPU extension name to be passed to the compiler or "none" if the device
     does not support an FPU.
     '''
     if _FPU_NONE == fpu_width:
-        return ''
+        return 'none'
 
     match arch:
-        case 'armv7e-m':
+        case 'armv7em':
             if _FPU_DP & fpu_width:
                 return 'fpv5-dp-d16'
             else:
                 return 'fpv4-sp-d16'
-        case 'armv8-m.main':
+        case 'armv8m.main':
             if _FPU_DP & fpu_width:
                 raise RuntimeError(f'Arch {arch} unexpectedly has a double-precision FPU!')
             else:
                 return 'fpv5-sp-d16'
-        case 'armv8.1-m.main':
+        case 'armv8.1m.main':
             if _FPU_DP & fpu_width:
                 return 'fp-armv8-fullfp16-d16'
             else:
                 raise RuntimeError(f'Arch {arch} unexpectedly has a single-precision FPU!')
         case _:
-            # Default to no FPU.
-            return ''
+            raise RuntimeError(f'Arch {arch} unexpectedly has an FPU!')
 
-def _get_mve_extension(arch: str, fpu_width: int) -> str:
+
+def _get_mve_support(arch: str, fpu_width: int) -> str:
     '''Return the MVE (M-Profile Vector Extensions) name to be passed to the compiler or an empty
     string if the device dose not support MVE.
     '''
