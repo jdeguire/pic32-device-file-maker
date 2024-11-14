@@ -35,14 +35,24 @@ extern void __attribute__((weak, long_call)) _on_reset(void);
 extern void __attribute__((weak, long_call)) _on_bootstrap(void);
 
 
-/* Enable the FPU for devices that have one. 
+/* Enable the FPU for devices that have one. This is also used for devices that support the M-Profile
+   Vector Extensions because that uses the 16 double-precision FPU registers as 8 128-bit vector
+   registers.
  */
 void __attribute__((weak)) _EnableFpu(void)
 {
-#if defined(__ARM_FP) && (0 != __ARM_FP)
+#if (defined(__ARM_FP) && (0 != __ARM_FP))  ||  (defined(__ARM_FEATURE_MVE) && (__ARM_FEATURE_MVE > 0))
     SCB->CPACR |= 0x00F00000;
     __DSB();
     __ISB();
+
+    // Initialize the FPSCR register to clear out status info from before a warn reset.
+    // If present, set FPSCR.LTPSIZE to 4. This relates to the Low Overhead Branch extension.
+#  if defined(FPU_FPDSCR_LTPSIZE_Msk)
+    __set_FPSCR(0x040000);
+#  else
+    __set_FPSCR(0);
+#  endif
 #endif
 }
 
@@ -66,6 +76,24 @@ void __attribute__((weak)) _EnableCpuCache(void)
 #endif
 #if __DCACHE_PRESENT == 1
     SCB_EnableDCache();
+#endif
+}
+
+/* Enable branch prediction and the Low Overhead Branch extension if either are present.
+ */
+void __attribute__((weak)) _EnableBranchCaches(void)
+{
+#if defined(SCB_CCR_LOB_Msk)
+  /* Enable Loop and branch info cache */
+  SCB->CCR |= SCB_CCR_LOB_Msk;
+#endif
+#if defined(SCB_CCR_BP_Msk)
+  /* Enable Branch Prediction */
+  SCB->CCR |= SCB_CCR_BP_Msk;
+#endif
+#if defined(SCB_CCR_LOB_Msk) || defined(SCB_CCR_BP_Msk)
+  __DSB();
+  __ISB();
 #endif
 }
 
@@ -160,6 +188,7 @@ void __attribute((noreturn)) Reset_Handler(void)
 
     _EnableFpu();
     _EnableCpuCache();
+    _EnableBranchCaches();
     _EnableCmccCache();
 
     /* Set the vector table base address, if supported by this device. */
@@ -176,10 +205,6 @@ void __attribute((noreturn)) Reset_Handler(void)
         _on_bootstrap();
 
     /* The app is ready to go, call main. */
-    /* TODO: Should this call _start() instead? That goes into the Musl library and lets it do its
-             own startup. It will call main() so we woudn't do that here. It might also do the stuff
-             in _LibcInitArray(), but it does a bunch of extra stuff too we might not want. We would
-             need to figure out how to create an "AUXV" structure. */
     exit(main());
 
 #ifdef __DEBUG
