@@ -168,8 +168,8 @@ def _get_target_macros(devinfo: DeviceInfo) -> dict[str, str]:
     if _FPU_SP & fpu_width:
         macros[f'__PIC32_HAS_FPU32'] = ''
 
-    macros['__PIC32_DEVICE_NAME'] = name
-    macros['__PIC32_DEVICE_NAME__'] = name
+    macros['__PIC32_DEVICE_NAME'] = '"' + name + '"'
+    macros['__PIC32_DEVICE_NAME__'] = '"' + name + '"'
 
     macros['__PIC32_PIN_COUNT'] = str(devinfo.pincount)
     macros['__PIC32_PIN_COUNT__'] = str(devinfo.pincount)
