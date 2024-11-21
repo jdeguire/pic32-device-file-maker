@@ -199,7 +199,7 @@ def _get_MEMORY_command(address_spaces: list[DeviceAddressSpace]) -> str:
             size: int = region.size
 
             # We need to add some region attributes to the main flash and RAM sections. Unfortunately,
-            # the device info we can get fro the ATDF files is not totally helpful here.
+            # the device info we can get from the ATDF files is not totally helpful here.
             if name == biggest_flash_region.name.lower():
                 memory_cmd += f'  {name :<17} (rx)  : ORIGIN = 0x{start :08X}, LENGTH = 0x{size :08X}\n'
             elif name == biggest_ram_region.name.lower():

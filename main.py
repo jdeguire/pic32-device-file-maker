@@ -92,72 +92,36 @@ def get_atdf_paths_from_dir(packs_dir: str) -> list[Path]:
     for rootname, _, filenames in os.walk(packs_path):
         for name in filenames:
             p = Path(rootname, name)
-# TODO: This is hardcoded to just a couple of devices for now. Remove this later.
-#       We could probably do some basic filtering here, like removing "PIC32M" stuff.
-#            if '.atdf' == p.suffix:
-            if 'pic32cz8110ca80208.atdf' == name.lower()  or 'atsame54p20a.atdf' == name.lower():
-                atdf_paths.append(p)
+
+            if '.atdf' != p.suffix:
+                continue
+
+            # All PIC32M devices are MIPS. We are not supporting those right now, so they're easy
+            # to filter out here.
+            if name.lower().startswith('pic32m')  or  name.lower().startswith('32m'):
+                continue
+
+            # We also are not supporting Cortex-A devices, so filter out the "SAMA" devices.
+            if name.lower().startswith('atsama')  or  name.lower().startswith('sama'):
+                continue
+
+            atdf_paths.append(p)
 
     return atdf_paths
 
-def create_all_processors_header(hdr: IO[str],
-                                 basename: str,
-                                 device_families: dict[str, list[str]]
-                                 ) -> None:
-    '''Make a big header file that encompasses all of the devices for which this app has made files.
+def open_for_writing(outfile: Path):
+    '''Open a file for writing with UTF-8 encoding and Unix line ending, creating the file and any
+    intermediate directories to it if needed.
 
-    This lets a user include a single header file that will find the correct device header file
-    based on macros instead of requiring a user to always remember to include the device-specific
-    header file. The inputs are the file-like object to which the data will be written, the base
-    name of the file without path or extension, and a dict of device families to lists of devices.
-    ''' 
-    # Write the header block with copyright info.
-    hdr.write('/*\n')
-    hdr.write(strings.get_generated_by_string(' * '))
-    hdr.write(' * \n')
-    hdr.write(strings.get_non_cmsis_apache_license(' * '))
-    hdr.write(' */\n\n')
+    This is really just a convenient wrapper around os.makedirs() and open() because this file uses
+    both of those a lot.
+    '''
+    if outfile.is_dir():
+        raise RuntimeError(f'Path {outfile} must be a file, not a directory.')
 
-    # Include guard
-    hdr.write(f'#ifndef {basename.upper()}_H_\n')
-    hdr.write(f'#define {basename.upper()}_H_\n\n')
+    os.makedirs(outfile.parent, exist_ok = True)
 
-    first_family = True
-    for family,devices in device_families.items():
-        if not family.startswith('cortexm_'):
-            continue
-
-        family = family.split('_', 1)[1]
-
-        if first_family:
-            hdr.write(f'#if defined(__{family})\n')
-        else:
-            hdr.write(f'#elif defined(__{family})\n')
-        
-        first_family = False
-
-        first_dev = True
-        for d in devices:
-            name = d.upper()
-
-            if first_dev: 
-                hdr.write(f'#  if defined(__{name}__)\n')
-            else:
-                hdr.write(f'#  elif defined(__{name}__)\n')
-            
-            first_dev = False
-
-            hdr.write(f'#    include "proc/{d.lower()}.h"\n')
-        
-        hdr.write('#  else\n')
-        hdr.write(f'#    error Unknown device for {family} family!\n')
-        hdr.write('#  endif\n')
-
-    hdr.write('#else\n')
-    hdr.write('#  error Unknown device family!\n')
-    hdr.write('#endif\n')
-
-    hdr.write(f'\n#endif /* ifndef {basename.upper()}_H_ */\n')
+    return open(outfile, 'w', encoding='utf-8', newline='\n')
 
 def remove_file_tag(file_line: str, tagname: str) -> tuple[str, str]:
     '''Remove a tag, such as {LICENSE: ... } and {DEST: ... } from the given line, return the rest
@@ -244,24 +208,14 @@ if '__main__' == __name__:
 
         # Linker script
         #
-        ld_path = output_path / 'cortex-m' / 'lib' / 'proc' / devinfo.name.lower()
-        ld_name = 'default.ld'
-        ld_loc = ld_path / ld_name
-
-        os.makedirs(ld_path, exist_ok = True)
-
-        with open(ld_loc, 'w', encoding='utf-8', newline='\n') as ld:
+        ld_loc = output_path / 'cortex-m' / 'lib' / 'proc' / devinfo.name.lower() / 'default.ld'
+        with open_for_writing(ld_loc) as ld:
             cortexm_linker_script_maker.run(devinfo, ld)
 
         # C device-specifc header file
         #
-        dev_header_path = output_path / 'cortex-m' / 'include' / 'proc'
-        dev_header_name = devinfo.name.lower() + '.h'
-        dev_header_loc = dev_header_path / dev_header_name
-
-        os.makedirs(dev_header_path, exist_ok = True)
-
-        with open(dev_header_loc, 'w', encoding='utf-8', newline='\n') as hdr:
+        dev_header_loc = output_path / 'cortex-m' / 'include' / 'proc' / (devinfo.name.lower() + '.h')
+        with open_for_writing(dev_header_loc) as hdr:
             cortexm_c_device_header_maker.run(devinfo, hdr, peripheral_header_prefix, 
                                               fuses_header_prefix)
 
@@ -271,13 +225,8 @@ if '__main__' == __name__:
         #
         for periph in devinfo.peripherals:
             if 'fuses' == periph.name.lower():
-                fuses_header_path = output_path / 'cortex-m' / 'include' / 'proc' / fuses_header_prefix
-                fuses_header_name = devinfo.name.lower() + '.h'
-                fuses_header_loc = fuses_header_path / fuses_header_name
-
-                os.makedirs(fuses_header_path, exist_ok = True)
-
-                with open(fuses_header_loc, 'w', encoding='utf-8', newline='\n') as hdr:
+                fuses_header_loc = (output_path / 'cortex-m' / 'include' / 'proc' / fuses_header_prefix / (devinfo.name.lower() + '.h'))
+                with open_for_writing(fuses_header_loc) as hdr:
                     basename = devinfo.name.lower() + '_fuses'
                     cortexm_c_periph_header_maker.run(basename, periph, hdr)
 
@@ -287,33 +236,23 @@ if '__main__' == __name__:
         #
         for periph in devinfo.peripherals:
             if 'fuses' != periph.name.lower()  and  periph.id  and  'system_ip' not in periph.id.lower():
-                full_name = 'cortexm_' + periph.name + '_' + periph.id
+                full_name = periph.name.lower() + '_' + periph.id
 
                 if full_name not in peripherals_to_make:
                     peripherals_to_make[full_name] = periph
 
         # C interrupt vectors file
         #
-        vectors_src_path = output_path / 'cortex-m' / 'lib' / 'proc' / devinfo.name.lower()
-        vectors_src_name = 'vectors.c'
-        vectors_src_loc = vectors_src_path / vectors_src_name
-
-        os.makedirs(vectors_src_path, exist_ok = True)
-
-        with open(vectors_src_loc, 'w', encoding='utf-8', newline='\n') as vec:
+        vectors_src_loc = output_path / 'cortex-m' / 'lib' / 'proc' / devinfo.name.lower() / 'vectors.c'
+        with open_for_writing(vectors_src_loc) as vec:
             proc_header_name = 'which_pic32.h'
             cortexm_c_vectors_maker.run(proc_header_name, devinfo.interrupts, vec)
 
         # Clang configuration file
         #
-        config_path = output_path / 'cortex-m' / 'config'
-        config_name = devinfo.name.lower() + '.cfg'
-        config_loc = config_path / config_name
-
-        os.makedirs(config_path, exist_ok = True)
-
-        with open(config_loc, 'w', encoding='utf-8', newline='\n') as cfg:
-            default_ld_loc = os.path.relpath(ld_loc, config_path)
+        config_loc = output_path / 'cortex-m' / 'config' / (devinfo.name.lower() + '.cfg')
+        with open_for_writing(config_loc) as cfg:
+            default_ld_loc = os.path.relpath(ld_loc, config_loc.parent)
             cortexm_config_file_maker.run(devinfo, cfg, default_ld_loc)
 
 
@@ -321,7 +260,7 @@ if '__main__' == __name__:
         # file. That is, instead of including the individual processor header in your project, you
         # can be lazy and include this one to let it figure out what processor you have.
         #
-        family = 'cortexm_' + devinfo.family.upper()
+        family = devinfo.family.upper()
         if family in device_families:
             device_families[family].append(devinfo.name)
         else:
@@ -331,32 +270,19 @@ if '__main__' == __name__:
 
     # Make all of the peripheral implementation C headers. These are shared among various devices.
     #
-    for key,val in peripherals_to_make.items():
-        if key.startswith('cortexm_'):
-            periph_name = key.split('_', 1)[1].lower()
-            print(f'Creating peripheral header for {periph_name}')
+    for periph_name, periph_group in peripherals_to_make.items():
+        print(f'Creating peripheral header for {periph_name}')
 
-            periph_header_path = output_path / 'cortex-m' / 'include' / 'proc' / peripheral_header_prefix
-            periph_header_name = periph_name + '.h'
-            periph_header_loc = periph_header_path / periph_header_name
-
-            os.makedirs(periph_header_path, exist_ok = True)
-
-            with open(periph_header_loc, 'w', encoding='utf-8', newline='\n') as hdr:
-                cortexm_c_periph_header_maker.run(periph_name, val, hdr)
+        periph_header_loc = output_path / 'cortex-m' / 'include' / 'proc' / peripheral_header_prefix / (periph_name + '.h')
+        with open_for_writing(periph_header_loc) as hdr:
+            cortexm_c_periph_header_maker.run(periph_name, periph_group, hdr)
 
     # Make the all-encompassing processor header file.
     #
-    big_proc_header_path = output_path / 'cortex-m' / 'include'
-    big_proc_header_base = 'which_pic32'
-    big_proc_header_name = big_proc_header_base + '.h'
-    big_proc_header_loc = big_proc_header_path / big_proc_header_name
-
-    os.makedirs(big_proc_header_path, exist_ok = True)
-
     print('Creating big processor header')
-    with open(big_proc_header_loc, 'w', encoding='utf-8', newline='\n') as hdr:
-        create_all_processors_header(hdr, big_proc_header_base, device_families)
+    big_proc_header_loc = output_path / 'cortex-m' / 'include' / 'which_pic32.h'
+    with open_for_writing(big_proc_header_loc) as hdr:
+        all_devices_header_maker.run(hdr, big_proc_header_loc.stem, device_families)
 
     # Copy the premade files to their proper destinations.
     #
