@@ -92,7 +92,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: 
     for fp in devinfo.peripherals:
         if 'fuses' == fp.name.lower():
             outfile.write('/* ----- Device Configuration Fuses ----- */\n')
-            outfile.write(f'#include "{fuse_prefix}{devinfo.name.lower()}.h"\n\n')
+            outfile.write(f'#include "{fuse_prefix}/{devinfo.name.lower()}.h"\n\n')
             outfile.write(_get_device_fuse_declarations(fp, devinfo.address_spaces))
             outfile.write('\n\n')
             break
@@ -200,7 +200,7 @@ def _get_peripheral_headers(peripherals: list[PeripheralGroup], prefix: str) -> 
         if not _peripheral_is_special(periph):
             name = periph.name.lower()
             id = periph.id.lower()
-            periph_str += f'#include "{prefix}{name}_{id}.h"\n'
+            periph_str += f'#include "{prefix}/{name}_{id}.h"\n'
 
     return periph_str
 
