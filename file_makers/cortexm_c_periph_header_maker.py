@@ -281,7 +281,7 @@ def _get_register_struct(periph_name: str, group: RegisterGroup, mode: str = '')
 
         # Get the type name.
         if member.is_subgroup:
-            subgroup_type = _get_base_groupdef_name(periph_name, member.name) + '_t'
+            subgroup_type = _get_base_groupdef_name(periph_name, member.module_name) + '_t'
         else:
             subgroup_type = _get_reg_type_from_size(member.size)
 

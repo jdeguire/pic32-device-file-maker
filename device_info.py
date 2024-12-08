@@ -83,6 +83,7 @@ peripherals : list[PeripheralGroup]
         members : list[RegisterGroupMember]
             is_subgroup : bool
             name : str
+            module_name : str
             mode : str
             offset : int
             size : int
@@ -200,6 +201,7 @@ class RegisterGroupMember:
     '''
     is_subgroup: bool               # False for registers, True for register subgroups
     name: str
+    module_name: str                # Name of register group this references; applies only to subgroups
     mode: str
     offset: int                     # The offset from the start of the instance
     size: int                       # Size in bytes
