@@ -76,3 +76,12 @@ subdirectory called `pic32-device-files` in your chosen output directory.
  
 You can also use `--help` or `-h` to get some help text on the command line or use `--version` to
 print a bit of version info.
+
+## License
+This app is covered by the standard 3-clause BSD license. See the LICENSE file in this directory
+for the full license text.
+
+The files created by this app are covered under the Apache 2.0 license. A copy of the license is
+output along with the generated files in a LICENSE file at the top level of the output directory.
+The Apache license is used because that is what Arm's CMSIS framework uses and many of the files
+created by this app are based on examples provided in CMSIS.
