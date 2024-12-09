@@ -59,6 +59,7 @@ def run(proc_header_name: str, interrupts: list[DeviceInterrupt], outfile: IO[st
 
     # This file does not have an epilogue.
 
+
 def _get_file_prologue(proc_header_name: str) -> str:
     '''Return a string with the file prologue, which contains the license info, a reference to
     this project, and some other declarations.
@@ -78,6 +79,7 @@ def _get_file_prologue(proc_header_name: str) -> str:
     prologue += 'extern uint32_t __INITIAL_SP;\n'
 
     return prologue
+
 
 def _get_default_handlers() -> str:
     '''Return a string containing definitions for the default interrupt handler and the Hard Fault
@@ -120,6 +122,7 @@ def _get_default_handlers() -> str:
         void __attribute__((noreturn)) Reset_Handler(void);
         ''')
 
+
 def _get_handler_declarations(interrupts: list[DeviceInterrupt]) -> str:
     '''Return a string containing weak declarations for the interrupt and exception handlers not
     already covered by _get_default_handlers().
@@ -139,6 +142,7 @@ def _get_handler_declarations(interrupts: list[DeviceInterrupt]) -> str:
         decl_str += f'void {func_str :<32}(void) __attribute__((weak, alias("Default_Handler")));\n'
 
     return decl_str
+
 
 def _get_vector_table(interrupts: list[DeviceInterrupt]) -> str:
     '''Return a string containing the definition of the vector table for this device.

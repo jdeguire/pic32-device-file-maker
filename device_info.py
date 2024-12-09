@@ -126,6 +126,7 @@ class ParameterValue:
     value: str
     caption: str        # This is a comment to explain the parameter
 
+
 @dataclass
 class DeviceMemoryRegion:
     '''A data structure to represent a region of memory in the device.
@@ -156,6 +157,7 @@ class DeviceAddressSpace:
     size: int
     mem_regions: list[DeviceMemoryRegion]
 
+
 @dataclass
 class RegisterGroupReference:
     '''A data structure to represent a reference to a register group.
@@ -170,6 +172,7 @@ class RegisterGroupReference:
     addr_space: str
     offset: int
 
+
 @dataclass
 class PeripheralInstance:
     '''A data structure to represent a single instance of a peripheral.
@@ -182,6 +185,7 @@ class PeripheralInstance:
     reg_group_refs: list[RegisterGroupReference]
     params: list[ParameterValue]
 
+
 @dataclass
 class RegisterField:
     '''A data structure representing a single bitfield in a register.
@@ -191,6 +195,7 @@ class RegisterField:
     mask: int
     modes: list[str]
     values: list[ParameterValue]    # Enum values for the possible values of this field
+
 
 @dataclass
 class RegisterGroupMember:
@@ -210,6 +215,7 @@ class RegisterGroupMember:
     caption: str                    # Description
     fields: list[RegisterField]
 
+
 @dataclass
 class RegisterGroup:
     '''A data structure to represent a set of registers grouped together in a peripheral.
@@ -223,6 +229,7 @@ class RegisterGroup:
     modes: list[str]    # Used for SERCOM because registers change based on SPI vs I2C vs whatever
     members: list[RegisterGroupMember]
 
+
 @dataclass
 class PeripheralGroup:
     '''A data structure to represent a group of peripherals of the same type.
@@ -233,6 +240,7 @@ class PeripheralGroup:
     instances: list[PeripheralInstance]
     reg_groups: list[RegisterGroup]
 
+
 @dataclass
 class DeviceInterrupt:
     '''A data structure to represent a single interrupt in a device.
@@ -242,6 +250,7 @@ class DeviceInterrupt:
     module_instance: str
     caption: str
 
+
 @dataclass
 class DeviceEvent:
     '''A data structure to represent a single event generator or user in a device.
@@ -250,6 +259,7 @@ class DeviceEvent:
     index: int
     module_instance: str
 
+
 @dataclass
 class PropertyGroup:
     '''A data structure to represent a group of additional properties for a device provided by the
@@ -257,6 +267,7 @@ class PropertyGroup:
     '''
     name: str
     properties: list[ParameterValue]
+
 
 
 @dataclass

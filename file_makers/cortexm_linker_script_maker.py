@@ -125,6 +125,7 @@ def _remove_overlapping_memory(address_spaces: list[DeviceAddressSpace]) -> list
         
     return new_spaces
 
+
 def _find_biggest_internal_region(address_spaces: list[DeviceAddressSpace],
                                   type: str) -> DeviceMemoryRegion | None:
     '''Find and return the largest internal memory region of the given type (flash, ram, io, etc.).
@@ -149,6 +150,7 @@ def _find_biggest_internal_region(address_spaces: list[DeviceAddressSpace],
                                                 external = region.external)
 
     return biggest
+
 
 def _get_memory_symbols(address_spaces: list[DeviceAddressSpace]) -> str:
     '''Return a set of linker symbols giving the start and size of ROM, RAM, and any other useful
@@ -180,6 +182,7 @@ def _get_memory_symbols(address_spaces: list[DeviceAddressSpace]) -> str:
         '''
 
     return textwrap.dedent(symbol_str)
+
 
 def _get_MEMORY_command(address_spaces: list[DeviceAddressSpace]) -> str:
     '''Return the MEMORY command for GNU linker scripts that lists the memory regions in the device.
@@ -217,6 +220,7 @@ def _get_MEMORY_command(address_spaces: list[DeviceAddressSpace]) -> str:
         memory_cmd += f'REGION_ALIAS("ram", {biggest_ram_region.name.lower()});\n'
 
     return memory_cmd
+
 
 def _get_standard_SECTIONS() -> str:
     '''Return the standard sections that would be in a SECTIONS command for Arm linker scripts.
@@ -432,6 +436,7 @@ def _get_standard_SECTIONS() -> str:
 
     return textwrap.indent(sections_cmd, '  ')
 
+
 def _get_fuse_SECTIONS(addr_spaces: list[DeviceAddressSpace], fuses: PeripheralGroup) -> str:
     '''Create special output sections for the given peripherals assuming they are fuses. This will
     look through the address spaces to find one to which they belong.
@@ -450,6 +455,7 @@ def _get_fuse_SECTIONS(addr_spaces: list[DeviceAddressSpace], fuses: PeripheralG
 
     return textwrap.indent(fuse_str, '  ')
 
+
 def _find_start_of_address_space(addr_spaces: list[DeviceAddressSpace], name: str) -> int:
     '''Search the list of address spaces for the one with the given name and return its start
     address.
@@ -458,4 +464,4 @@ def _find_start_of_address_space(addr_spaces: list[DeviceAddressSpace], name: st
         if name == space.id:
             return space.start_addr
 
-    raise RuntimeError(f'Address space {name} could not be found!')
+    raise ValueError(f'Address space {name} could not be found!')

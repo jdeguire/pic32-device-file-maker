@@ -132,6 +132,7 @@ def _get_file_prologue(devname: str) -> str:
 
     return prologue
 
+
 def _get_interrupt_enum(interrupts: list[DeviceInterrupt]) -> str:
     '''Return a string containing a C enumerations for the device interrupts.
     '''
@@ -149,6 +150,7 @@ def _get_interrupt_enum(interrupts: list[DeviceInterrupt]) -> str:
             enum_str +
             '#endif /* ifndef __ASSEMBLER__ */\n')
 
+
 def _get_parameter_macros(parameters: list[ParameterValue], prefix: str = '') -> str:
     '''Return a string containing C macros defining the given parameters and their values.
     '''
@@ -164,6 +166,7 @@ def _get_parameter_macros(parameters: list[ParameterValue], prefix: str = '') ->
             macros += f'#define {macro_name :<32} {macro_value}\n'
 
     return macros
+
 
 def _get_memory_region_macros(address_spaces: list[DeviceAddressSpace]) -> str:
     '''Return a string containing C macros defining the locations and sizes of the memory regions
@@ -187,6 +190,7 @@ def _get_memory_region_macros(address_spaces: list[DeviceAddressSpace]) -> str:
 
     return region_str
 
+
 def _get_peripheral_headers(peripherals: list[PeripheralGroup], prefix: str) -> str:
     '''Return a string containing include declarations for this devices' peripherals, not including
     device fuses or core peripherals.
@@ -203,6 +207,7 @@ def _get_peripheral_headers(peripherals: list[PeripheralGroup], prefix: str) -> 
             periph_str += f'#include "{prefix}/{name}_{id}.h"\n'
 
     return periph_str
+
 
 def _get_peripheral_address_macros(peripherals: list[PeripheralGroup], 
                                    address_spaces: list[DeviceAddressSpace]) -> str:
@@ -234,6 +239,7 @@ def _get_peripheral_address_macros(peripherals: list[PeripheralGroup],
             '\n#ifndef __ASSEMBLER__\n' +
             decl_macros +
             '#endif /* ifndef __ASSEMBLER__ */\n')
+
 
 def _get_device_fuse_declarations(fuse_periph: PeripheralGroup, 
                                   addr_spaces: list[DeviceAddressSpace]
@@ -268,6 +274,7 @@ def _get_device_fuse_declarations(fuse_periph: PeripheralGroup,
             decl_str +
             '#endif /* ifndef __ASSEMBLER__ */\n')
 
+
 def _get_file_epilogue(devname: str) -> str:
     '''Return a string with the file epilogue, which is the stuff at the end of the file like
     the end of the include guard and extern "C" statements that were at the top.
@@ -283,6 +290,7 @@ def _get_file_epilogue(devname: str) -> str:
     epilogue += f'#endif /* {devname.upper()}_H_ */\n'
 
     return epilogue
+
 
 def _peripheral_is_special(periph: PeripheralGroup) -> bool:
     '''Return True if the given peripheral is special and thus would require handling different
@@ -302,6 +310,7 @@ def _peripheral_is_special(periph: PeripheralGroup) -> bool:
     
     return False
 
+
 def _find_start_of_address_space(addr_spaces: list[DeviceAddressSpace], name: str) -> int:
     '''Search the list of address spaces for the one with the given name and return its start
     address.
@@ -310,4 +319,4 @@ def _find_start_of_address_space(addr_spaces: list[DeviceAddressSpace], name: st
         if name == space.id:
             return space.start_addr
 
-    raise RuntimeError(f'Address space {name} could not be found!')
+    raise ValueError(f'Address space {name} could not be found!')

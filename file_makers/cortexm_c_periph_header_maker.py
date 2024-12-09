@@ -90,6 +90,7 @@ def _get_file_prologue(filename: str) -> str:
 
     return prologue
 
+
 def _get_register_macros(periph_name: str, reg: RegisterGroupMember) -> str:
     '''Return a string containing macros defining the given register and its bitfields assuming it
     is a register and not a reference to another register group.
@@ -156,6 +157,7 @@ def _get_register_macros(periph_name: str, reg: RegisterGroupMember) -> str:
 
     return macros
 
+
 def _get_register_group_definition(periph_name: str, group: RegisterGroup) -> str:
     '''Return a string containing a C struct or union that defines a single register group.
     '''
@@ -180,6 +182,7 @@ def _get_register_group_definition(periph_name: str, group: RegisterGroup) -> st
         group_def += _get_register_struct(periph_name, group)
 
     return group_def
+
 
 def _get_file_epilogue(filename: str) -> str:
     '''Return a string with the file epilogue, which is the stuff at the end of the file like
@@ -218,6 +221,7 @@ def _get_bitfield_macros(field_macro_name: str, mask: int, caption: str) -> str:
 
     return macros
 
+
 def _get_bitfield_value_macros(macro_base_name: str, values: list[ParameterValue]) -> str:
     '''Return a string containing macros for each value in the given list: one macro defining the
     value and another convenience macro to assign this value to a register.
@@ -235,6 +239,7 @@ def _get_bitfield_value_macros(macro_base_name: str, values: list[ParameterValue
 
     return macros
 
+
 def _get_basic_macro(macro_name: str, macro_value: str, macro_caption: str = '') -> str:
     '''Return a string containing a single macro definition with the given value and optional
     caption comment.
@@ -248,6 +253,7 @@ def _get_basic_macro(macro_name: str, macro_value: str, macro_caption: str = '')
         macro += f'#define {macro_name :<48} ({macro_value})\n'
 
     return macro
+
 
 def _get_register_struct(periph_name: str, group: RegisterGroup, mode: str = '') -> str:
     '''Return a string containing a C struct that defines a single register group.
@@ -311,6 +317,7 @@ def _get_register_struct(periph_name: str, group: RegisterGroup, mode: str = '')
 
     return reg_struct
 
+
 def _get_base_groupdef_name(periph_name: str, group_name: str, mode_name: str = '') -> str:
     '''Return a base name to used used for the type name of the given group.
 
@@ -336,12 +343,13 @@ def _get_base_groupdef_name(periph_name: str, group_name: str, mode_name: str = 
 
         return f'{periph_name.lower()}{mode_name}{group_name}_regs'.replace('__', '_')
 
+
 def _get_reg_type_from_size(size: int) -> str:
     '''Return a C99 type to be used with the given size, such as uint32_t for something that is
     four bytes.
     '''
     if size > 8:
-        raise RuntimeError(f'Invalid size {size} for register type!')
+        raise ValueError(f'Invalid size {size} for register type!')
     if size > 4:
         return 'uint64_t'
     elif size > 2:

@@ -81,6 +81,7 @@ class AtdfReader:
         '''
         return e.get(name, default)
 
+
     @staticmethod
     def get_int(e: Element, name: str, default: int = 0) -> int:
         '''A convenience method for reading an integer attribute with a configurable default.
@@ -90,6 +91,7 @@ class AtdfReader:
             return int(attr, 0)     # last 0 tells int() to figure out base automatically
         else:
             return default
+
 
     @staticmethod
     def get_bool(e: Element, name: str, default: bool = False) -> bool:
@@ -103,6 +105,7 @@ class AtdfReader:
                 return False
         else:
             return default
+
 
     def get_all_device_info(self) -> DeviceInfo:
         '''Return a DeviceInfo structure with all of the info from below functions added to it.
@@ -119,6 +122,7 @@ class AtdfReader:
                           interrupts = self.get_interrupts(),
                           event_generators = self.get_event_generators(),
                           event_users = self.get_event_users())
+
 
     def get_device_name(self) -> str:
         '''Get the name of the device like you would see on a datasheet.
@@ -138,6 +142,7 @@ class AtdfReader:
         else:
             return ''
 
+
     def get_device_cpu(self) -> str:
         '''Get the cpu name of the device as a lower-case string, such as "mips" or "cortex-m4".
 
@@ -153,6 +158,7 @@ class AtdfReader:
         else:
             return ''
     
+
     def get_device_family(self) -> str:
         '''Get the family of the device, such as "SAME", "PIC32CX", and so on.
 
@@ -165,6 +171,7 @@ class AtdfReader:
         else:
             return ''
 
+
     def get_device_series(self) -> str:
         '''Get the family of the device, such as "SAME54", "PIC32CXSG41", and so on.
 
@@ -176,6 +183,7 @@ class AtdfReader:
             return AtdfReader.get_str(element, 'series')
         else:
             return ''
+
 
     def get_device_pincount(self) -> int:
         '''Get the number of pins on the device or 0 if this info could not be found.
@@ -203,6 +211,7 @@ class AtdfReader:
                 return 0
             else:
                 return min_pincount
+
 
     def get_device_memory(self) -> list[DeviceAddressSpace]:
         '''Get a list of address spaces in this device, which in turn may contain memory regions.
@@ -236,7 +245,8 @@ class AtdfReader:
             memories.append(addr_space)
 
         return memories
-    
+
+
     def get_device_parameters(self) -> list[ParameterValue]:
         '''Get a list of parameters (C macros containing info) for the device itself.
         '''
@@ -254,6 +264,7 @@ class AtdfReader:
             params.append(pv)
 
         return params
+
 
     def get_peripheral_groups(self) -> list[PeripheralGroup]:
         '''Get a list of the peripheral groups for the device.
@@ -278,7 +289,8 @@ class AtdfReader:
             periph_groups.append(group)
 
         return periph_groups
-    
+
+
     def get_interrupts(self) -> list[DeviceInterrupt]:
         '''Get a list of all interrupts on the device.
         '''
@@ -298,6 +310,7 @@ class AtdfReader:
 
         return interrupt_list
 
+
     def get_event_generators(self) -> list[DeviceEvent]:
         '''Get a list of event generators on the device.
         '''
@@ -316,6 +329,7 @@ class AtdfReader:
         
         return events_list
 
+
     def get_event_users(self) -> list[DeviceEvent]:
         '''Get a list of event users on the device.
         '''
@@ -333,6 +347,7 @@ class AtdfReader:
             events_list.append(de)
         
         return events_list
+
 
     def get_device_propertes(self) -> list[PropertyGroup]:
         '''Get a list of property groups for the device.
@@ -396,7 +411,8 @@ class AtdfReader:
             instances.append(instance)
 
         return instances
-    
+
+
     def _get_register_groups(self, periph_name: str) -> list[RegisterGroup]:
         '''Get a list of register groups for the peripheral with the given name (ADC, CAN, etc.).
 
@@ -427,6 +443,7 @@ class AtdfReader:
 
         return register_groups
 
+
     def _get_register_group_members(self,
                                     module_element:Element,
                                     group_element: Element) -> list[RegisterGroupMember]:
@@ -449,6 +466,7 @@ class AtdfReader:
 
                 ref = RegisterGroupMember(is_subgroup = True,
                                           name = AtdfReader.get_str(member, 'name'),
+                                          module_name = AtdfReader.get_str(member, 'name-in-module'),
                                           mode = AtdfReader.get_str(member, 'modes'),
                                           offset = AtdfReader.get_int(member, 'offset'),
                                           size = AtdfReader.get_int(member, 'size'),
@@ -462,6 +480,7 @@ class AtdfReader:
 
                 reg = RegisterGroupMember(is_subgroup = False,
                                           name = AtdfReader.get_str(member, 'name'),
+                                          module_name = '',
                                           mode = AtdfReader.get_str(member, 'modes'),
                                           offset = AtdfReader.get_int(member, 'offset'),
                                           size = AtdfReader.get_int(member, 'size'),
@@ -472,6 +491,7 @@ class AtdfReader:
                 group_members.append(reg)
 
         return group_members
+
 
     def _get_register_fields(self, module_element: Element, reg_element: Element) -> list[RegisterField]:
         '''Get the definitions of the bitfields within the given register, including the list of
@@ -514,6 +534,7 @@ class AtdfReader:
             reg_fields.append(rf)
 
         return reg_fields
+
 
     def _find_element_with_name_attr(self, start_element: Element | None, 
                                      subelement_name: str, value: str) -> Element | None:

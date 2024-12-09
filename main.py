@@ -61,33 +61,20 @@
 # update the import statement for ElementTree below and in other modules to use it.
 #
 
+import argparse
 from atdf_reader import AtdfReader
 from device_info import DeviceInfo, PeripheralGroup
 from file_makers import *
-from multiprocessing import Pool
+import multiprocessing
 import os
 from pathlib import Path
 import shutil
-import tkinter
-import tkinter.filedialog
 
-
-def get_dir_from_dialog(title: str | None = None, mustexist: bool = True) -> str:
-    '''Open a file dialog asking the user to open a directory, returning what the user selects or
-    None if the dialog is cancelled.
-
-    The arguments let the caller specify a title for the dialog box and whether or not the choosen
-    directory must already exist. 
-    '''
-    tk_root = tkinter.Tk()
-    tk_root.withdraw()
-
-    return tkinter.filedialog.askdirectory(title=title, mustexist=mustexist)
 
 def get_atdf_paths_from_dir(packs_dir: str) -> list[Path]:
     '''Return a list of Path objects in which each Path points to a file with the '.atdf' extension.
     '''
-    atdf_paths = []
+    atdf_paths = {}
     packs_path = Path(packs_dir)
     for rootname, _, filenames in os.walk(packs_path):
         for name in filenames:
@@ -105,15 +92,19 @@ def get_atdf_paths_from_dir(packs_dir: str) -> list[Path]:
             if name.lower().startswith('atsama')  or  name.lower().startswith('sama'):
                 continue
 
-            atdf_paths.append(p)
+            # Overwrite previous path if one was already found for this device. This avoids
+            # duplicate entries when multiple pack versions are installed.
+            atdf_paths[name] = p
 
-    return atdf_paths
+    return list(atdf_paths.values())
+
 
 def parse_atdf_file_at_path(atdf_path: Path) -> DeviceInfo:
     '''Open a single .atdf file and parse it into a DeviceInfo structure.
     '''
     print(f'Parsing file {atdf_path}', flush=True)
     return AtdfReader(atdf_path).get_all_device_info()
+
 
 def get_device_infos_from_atdf_paths(atdf_paths: list[Path]) -> list[DeviceInfo]:
     '''Parse all of the ATDF files in the list and return corresponding DeviceInfo structures.
@@ -123,10 +114,11 @@ def get_device_infos_from_atdf_paths(atdf_paths: list[Path]) -> list[DeviceInfo]
     '''
     devinfos: list[DeviceInfo] = []
 
-    with Pool() as pool:
-        devinfos = pool.map(parse_atdf_file_at_path, atdf_paths)
+    with multiprocessing.Pool() as pool:
+        devinfos = pool.map(parse_atdf_file_at_path, atdf_paths, chunksize=6)
 
     return devinfos
+
 
 def open_for_writing(outfile: Path):
     '''Open a file for writing with UTF-8 encoding and Unix line ending, creating the file and any
@@ -142,6 +134,7 @@ def open_for_writing(outfile: Path):
 
     return open(outfile, 'w', encoding='utf-8', newline='\n')
 
+
 def remove_file_tag(file_line: str, tagname: str) -> tuple[str, str]:
     '''Remove a tag, such as {LICENSE: ... } and {DEST: ... } from the given line, return the rest
     of the contents within the braces after being trimmed of whitespace and the stuff that was 
@@ -151,6 +144,7 @@ def remove_file_tag(file_line: str, tagname: str) -> tuple[str, str]:
     tag[1] = tag[1].split('}', 1)[0]            # Remove '}' from end of tag
     tag[1] = tag[1].strip()                     # Removing leading and trailing whitespace
     return (tag[1], tag[0])
+
 
 def copy_premade_files(src_dir: str, dest_dir: str) -> None:
     '''Copy the premade files from the premade src directory to their appropriate destinations.
@@ -192,23 +186,49 @@ def copy_premade_files(src_dir: str, dest_dir: str) -> None:
             f_out.write(contents)
 
 
+def get_command_line_arguments() -> argparse.Namespace:
+    '''Return a object containing command line arugments for this app.
+
+    If an error occurs or a command line arugment requests help text or version info, then this will
+    exit the program after printing the appropriate info instead of returning.
+    '''
+    epilog_str: str = 'The files are put into a "pic32-device-files" subdirectory of the output directory.'
+
+    version_str = 'PIC32 Device File Maker ' + version.FILE_MAKER_VERSION + '\n'
+    version_str += f'Find this project at {strings.get_this_git_repo_location()}'
+
+    parser = argparse.ArgumentParser(
+                            description='Creates device-specific files to support PIC32 devices',
+                            epilog=epilog_str,
+                            formatter_class=argparse.RawTextHelpFormatter)
+
+    # The '-h, --help" options are automatically added. The 'version' action on the '--version'
+    # option is special and will exit after printing the version string.
+    parser.add_argument('packs_dir', type=Path,
+                        help='Path to the packs directory containing Microchip device info')
+    parser.add_argument('--output_dir', type=Path, default=Path(os.getcwd()),
+                        help='Where to put the created device files (default is current working dir)')
+    parser.add_argument('--version', action='version',
+                        help='Prints version info and exits',
+                        version=version_str)
+
+    # The command-line arguments added above will be a part of the returned object as member
+    # variables. For example, 'args.output_dir' holds the argument for '--output_dir'.
+    return parser.parse_args()
+
+
 if '__main__' == __name__:
-# TODO: Remove this hardcoded path when I'm doing testing.
-#    packs_dir = get_dir_from_dialog(title='Open packs directory')
-    packs_dir = '/home/jesse/projects/packs'
-    if not packs_dir:
-        exit(0)
+    args = get_command_line_arguments()
 
-    print(f'Got file path {packs_dir}')
-    print('-----')
+    # Put our output in a subdirectory specific to this script. This should prevent someone from
+    # accidentally blowing away their home directory by making that their output directory.
+    args.output_dir = args.output_dir / 'pic32-device-files'
 
-    our_path = Path(os.path.abspath(os.path.dirname(__file__)))
-    output_path = our_path / 'pic32-device-files'
-    if os.path.exists(output_path):
-        shutil.rmtree(output_path)
+    if os.path.exists(args.output_dir):
+        shutil.rmtree(args.output_dir)
 
-    lib_proc_prefix = output_path / 'cortex-m' / 'lib' / 'proc'
-    include_proc_prefix = output_path / 'cortex-m' / 'include' / 'proc'
+    lib_proc_prefix = args.output_dir / 'cortex-m' / 'lib' / 'proc'
+    include_proc_prefix = args.output_dir / 'cortex-m' / 'include' / 'proc'
 
     peripheral_header_pathname = 'periph'
     fuses_header_pathname = 'fuses'
@@ -216,7 +236,7 @@ if '__main__' == __name__:
     peripherals_to_make: dict[str, PeripheralGroup] = {}
     device_families: dict[str, list[str]] = {}
 
-    atdf_paths = get_atdf_paths_from_dir(packs_dir)
+    atdf_paths = get_atdf_paths_from_dir(args.packs_dir)
     devinfo_list = get_device_infos_from_atdf_paths(atdf_paths)
 
     # Make the files specific to each device and collect their perpiherals so we can make
@@ -269,7 +289,7 @@ if '__main__' == __name__:
 
         # Clang configuration file
         #
-        config_path = output_path / 'cortex-m' / 'config' / (devinfo.name.lower() + '.cfg')
+        config_path = args.output_dir / 'cortex-m' / 'config' / (devinfo.name.lower() + '.cfg')
         with open_for_writing(config_path) as cfg:
             default_ld_path = os.path.relpath(ld_path, config_path.parent)
             cortexm_config_file_maker.run(devinfo, cfg, default_ld_path)
@@ -303,14 +323,15 @@ if '__main__' == __name__:
     # Make the all-encompassing processor header file.
     #
     print('Creating big processor header')
-    big_proc_header_path = output_path / 'cortex-m' / 'include' / 'which_pic32.h'
+    big_proc_header_path = args.output_dir / 'cortex-m' / 'include' / 'which_pic32.h'
     with open_for_writing(big_proc_header_path) as hdr:
         all_devices_header_maker.run(hdr, big_proc_header_path.stem, device_families)
 
     # Copy the premade files to their proper destinations.
     #
+    our_path = Path(os.path.abspath(os.path.dirname(__file__)))
     premade_src = our_path / 'premade'
-    premade_dst = output_path
+    premade_dst = args.output_dir
     print(f'Copying premade files')
     copy_premade_files(premade_src.as_posix(), premade_dst.as_posix())
 

@@ -74,6 +74,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str], default_ld_path: str) -> None:
 
     # This file does not have an epilogue.
 
+
 def _get_file_prologue() -> str:
     '''Return a string with the file prologue, which contains the license info and a reference to
     this project.
@@ -87,6 +88,7 @@ def _get_file_prologue() -> str:
     prologue += '# \n'
 
     return prologue
+
 
 def _get_target_arch_options(devinfo: DeviceInfo) -> str:
     '''Return a string containing the options specifying the target and its architecture.
@@ -118,6 +120,7 @@ def _get_target_arch_options(devinfo: DeviceInfo) -> str:
         cmse_str = '-mcmse\n'
 
     return target_str + arch_str + fpu_str + abi_str + cmse_str
+
 
 def _get_target_macros(devinfo: DeviceInfo) -> dict[str, str]:
     '''Return a set of target-specific macros that would be useful to reference in C and C++
@@ -186,6 +189,7 @@ def _get_target_macros(devinfo: DeviceInfo) -> dict[str, str]:
 
     return macros
 
+
 def _get_arch_from_cpu_name(cpuname: str) -> str:
     '''Get the Arm ISA version, such as "armv7em", from its CPU name, such as "cortex-m7".
     '''
@@ -206,7 +210,8 @@ def _get_arch_from_cpu_name(cpuname: str) -> str:
         case 'm52' | 'm55' | 'm85':
             return 'armv8.1m.main'
         case _:
-            raise RuntimeError(f'Unknown CPU name {cpuname}!') 
+            raise ValueError(f'Unknown CPU name {cpuname}!') 
+
 
 def _get_fpu_name(arch: str, fpu_width: int) -> str:
     '''Return the FPU extension name to be passed to the compiler or "none" if the device
@@ -223,16 +228,16 @@ def _get_fpu_name(arch: str, fpu_width: int) -> str:
                 return 'fpv4-sp-d16'
         case 'armv8m.main':
             if _FPU_DP & fpu_width:
-                raise RuntimeError(f'Arch {arch} unexpectedly has a double-precision FPU!')
+                raise ValueError(f'Arch {arch} unexpectedly has a double-precision FPU!')
             else:
                 return 'fpv5-sp-d16'
         case 'armv8.1m.main':
             if _FPU_DP & fpu_width:
                 return 'fp-armv8-fullfp16-d16'
             else:
-                raise RuntimeError(f'Arch {arch} unexpectedly has a single-precision FPU!')
+                raise ValueError(f'Arch {arch} unexpectedly has a single-precision FPU!')
         case _:
-            raise RuntimeError(f'Arch {arch} unexpectedly has an FPU!')
+            raise ValueError(f'Arch {arch} unexpectedly has an FPU!')
 
 
 def _get_mve_support(arch: str, fpu_width: int) -> str:
@@ -253,10 +258,12 @@ def _get_mve_support(arch: str, fpu_width: int) -> str:
 
     return mve
 
+
 def _has_cmse_extension(arch: str) -> bool:
     '''Return True if the device supports the Cortex-M Security Extensions.
     '''
     return 'armv8' in arch
+
 
 def _get_fpu_width(devinfo: DeviceInfo) -> int:
     '''Return a value to indicate the width of the types supported by the device's FPU.
@@ -273,6 +280,7 @@ def _get_fpu_width(devinfo: DeviceInfo) -> int:
             width |= _FPU_DP
 
     return width
+
 
 def _get_target_l1cache(devinfo: DeviceInfo) -> int:
     '''Return a value indicating if the target has an L1 cache and what type if is.
