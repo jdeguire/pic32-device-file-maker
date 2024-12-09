@@ -206,7 +206,7 @@ def get_command_line_arguments() -> argparse.Namespace:
     # option is special and will exit after printing the version string.
     parser.add_argument('packs_dir', type=Path,
                         help='Path to the packs directory containing Microchip device info')
-    parser.add_argument('--output_dir', type=Path, default=Path(os.getcwd()),
+    parser.add_argument('--output-dir', type=Path, default=Path(os.getcwd()),
                         help='Where to put the created device files (default is current working dir)')
     parser.add_argument('--version', action='version',
                         help='Prints version info and exits',
