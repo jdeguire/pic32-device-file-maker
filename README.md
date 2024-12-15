@@ -67,7 +67,7 @@ This app was written using Python 3.10, so you should try to get at least that v
 older versions might work, like Python 3.8 or so, but there's no guarantee. You can run the app
 from the command-line like so:
 
-`python3 ./main.py <packs_dir>`
+`python3 ./pic32-device-file-maker.py <packs_dir>`
 
 This will look for the ".atdf" files in the given "packs_dir" and output the generated files to
 your working directory (that is, the directory from which you ran the app). You can optionally change
