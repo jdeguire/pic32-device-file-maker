@@ -106,15 +106,25 @@ def parse_atdf_file_at_path(atdf_path: Path) -> DeviceInfo:
     return AtdfReader(atdf_path).get_all_device_info()
 
 
-def get_device_infos_from_atdf_paths(atdf_paths: list[Path]) -> list[DeviceInfo]:
+def get_device_infos_from_atdf_paths(atdf_paths: list[Path], jobs: int = 0) -> list[DeviceInfo]:
     '''Parse all of the ATDF files in the list and return corresponding DeviceInfo structures.
 
     This will skip over unsupported architectures and so the output list might have fewer elements
-    than the input list.
+    than the input list. Use 'jobs' to control how many processes this spawns. The default is to
+    spawn one per process CPU (as returned by os.cpu_count()).
     '''
     devinfos: list[DeviceInfo] = []
 
-    with multiprocessing.Pool() as pool:
+    max_jobs: int | None = os.cpu_count()
+
+    # Pick a reasonable default if the number of CPUs cannot be determined.
+    if max_jobs is None:
+        max_jobs = 4
+
+    if jobs <= 0  or  jobs > max_jobs:
+        jobs = max_jobs
+
+    with multiprocessing.Pool(processes=jobs) as pool:
         devinfos = pool.map(parse_atdf_file_at_path, atdf_paths, chunksize=6)
 
     return devinfos
@@ -194,22 +204,23 @@ def get_command_line_arguments() -> argparse.Namespace:
     '''
     epilog_str: str = 'The files are put into a "pic32-device-files" subdirectory of the output directory.'
 
-    version_str = 'PIC32 Device File Maker ' + version.FILE_MAKER_VERSION + '\n'
-    version_str += f'Find this project at {strings.get_this_git_repo_location()}'
+    version_str = 'PIC32 Device File Maker ' + version.FILE_MAKER_VERSION
+    version_str += f' ({strings.get_this_git_repo_location()})'
 
     parser = argparse.ArgumentParser(
                             description='Creates device-specific files to support PIC32 devices',
                             epilog=epilog_str,
-                            formatter_class=argparse.RawTextHelpFormatter)
+                            formatter_class=argparse.RawDescriptionHelpFormatter)
 
     # The '-h, --help" options are automatically added. The 'version' action on the '--version'
     # option is special and will exit after printing the version string.
     parser.add_argument('packs_dir', type=Path,
-                        help='Path to the packs directory containing Microchip device info')
+                        help='path to the packs directory containing Microchip device info')
     parser.add_argument('--output-dir', type=Path, default=Path(os.getcwd()), metavar='DIR',
-                        help='Where to put the created device files (default is current working dir)')
+                        help='where to put the created device files (default is current working dir)')
+    parser.add_argument('--parse-jobs', type=int, default=0, metavar='JOBS',
+                        help='how many processes to use for parsing device files (default is one per CPU)')
     parser.add_argument('--version', action='version',
-                        help='Prints version info and exits',
                         version=version_str)
 
     # The command-line arguments added above will be a part of the returned object as member
@@ -237,7 +248,7 @@ if '__main__' == __name__:
     device_families: dict[str, list[str]] = {}
 
     atdf_paths = get_atdf_paths_from_dir(args.packs_dir)
-    devinfo_list = get_device_infos_from_atdf_paths(atdf_paths)
+    devinfo_list = get_device_infos_from_atdf_paths(atdf_paths, args.parse_jobs)
 
     # Make the files specific to each device and collect their perpiherals so we can make
     # those later. 

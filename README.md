@@ -60,7 +60,7 @@ called "Billion Laughs" and "Quadratic Blowup". Therefore, you should ensure tha
 you give to this module are really from Microchip and not some malicious user. See the info here:
 https://docs.python.org/3/library/xml.html#module-xml. That page has a link to a package called
 "defusedxml" you can use if you want to be safer. You should just need to get it from PIP and
-update the import statement for ElementTree below and in other modules to use it.
+update the import statement for ElementTree in the modules that use it.
 
 ## Running the App
 This app was written using Python 3.10, so you should try to get at least that version. Slightly
@@ -73,7 +73,11 @@ This will look for the ".atdf" files in the given "packs_dir" and output the gen
 your working directory (that is, the directory from which you ran the app). You can optionally change
 the ouput directory with the `--output_dir` option. The generated files are always put into a
 subdirectory called `pic32-device-files` in your chosen output directory.
- 
+
+This app uses the Python `multiprocess` module to parse the device info files. You can control how
+many processes are created to do this using the `--parse-jobs` argument. The default and maximum
+allowed is one per CPU.
+
 You can also use `--help` or `-h` to get some help text on the command line or use `--version` to
 print a bit of version info.
 
