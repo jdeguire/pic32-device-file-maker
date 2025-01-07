@@ -35,6 +35,7 @@ options needed for the desired target.
 from device_info import *
 import os
 from . import strings
+import textwrap
 from typing import IO
 
 
@@ -52,6 +53,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str], default_ld_path: str) -> None:
     Cortex-M device.
     '''
     outfile.write(_get_file_prologue())
+    outfile.write(_get_common_options())
     outfile.write('\n# Base target arch options.\n')
     outfile.write(_get_target_arch_options(devinfo))
     outfile.write('\n')
@@ -88,6 +90,32 @@ def _get_file_prologue() -> str:
     prologue += '# \n'
 
     return prologue
+
+def _get_common_options() -> str:
+    '''Return a string with options common to all Cortex-M devices, such as sysroot and include
+    directories.
+    '''
+    return textwrap.dedent('''
+        # The compiler is built with the build option CLANG_CONFIG_FILE_SYSTEM_DIR to tell Clang
+        # where to look by default for these config files.
+        # Clang supports "multilibs" to link against different libraries based on compiler options.
+        # The options here are matched to the ones in "multilib.yaml" in the sysroot to determine
+        # which multilib variant to link against.
+
+        # Specify a sysroot so hopefully Clang will look only in its install location rather than
+        # trying to find headers and stuff in actual system directories. This is also where
+        # "multilib.yaml" is located.
+        --sysroot=<CFGDIR>/../cortex-m
+
+        # Specify system include directories
+        -isystem <CFGDIR>/../cortex-m/CMSIS/Core/Include
+        -isystem <CFGDIR>/../cortex-m/include
+
+        # Ensure we are using the linker and runtimes bundled with this toolchain. Clang can try to
+        # use the system runtime and linker, which we do not want.
+        -rtlib=compiler-rt
+        -fuse-ld=lld
+        ''')
 
 
 def _get_target_arch_options(devinfo: DeviceInfo) -> str:

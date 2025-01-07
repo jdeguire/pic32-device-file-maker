@@ -300,7 +300,7 @@ if '__main__' == __name__:
 
         # Clang configuration file
         #
-        config_path = args.output_dir / 'cortex-m' / 'config' / (devinfo.name.lower() + '.cfg')
+        config_path = args.output_dir / 'config' / (devinfo.name.lower() + '.cfg')
         with open_for_writing(config_path) as cfg:
             default_ld_path = os.path.relpath(ld_path, config_path.parent)
             cortexm_config_file_maker.run(devinfo, cfg, default_ld_path)
