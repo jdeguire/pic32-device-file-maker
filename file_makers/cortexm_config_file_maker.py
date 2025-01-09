@@ -64,7 +64,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str], default_ld_path: str) -> None:
 
     outfile.write('# Set default linker script.\n')
     outfile.write('# This is used only if -T is not specified at link time.\n')
-    outfile.write(f'--default-script=<CFGDIR>/{default_ld_path}\n\n')
+    outfile.write(f'-Wl,--default-script=<CFGDIR>/{default_ld_path}\n\n')
 
     outfile.write('# Useful target-specific macros.\n')
     macros = _get_target_macros(devinfo)
