@@ -238,7 +238,7 @@ if '__main__' == __name__:
     if os.path.exists(args.output_dir):
         shutil.rmtree(args.output_dir)
 
-    lib_proc_prefix = args.output_dir / 'cortex-m' / 'lib' / 'proc'
+    lib_proc_prefix = args.output_dir / 'cortex-m' / 'proc'
     include_proc_prefix = args.output_dir / 'cortex-m' / 'include' / 'proc'
 
     peripheral_header_pathname = 'periph'

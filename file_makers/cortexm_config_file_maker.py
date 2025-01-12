@@ -60,11 +60,15 @@ def run(devinfo: DeviceInfo, outfile: IO[str], default_ld_path: str) -> None:
 
     outfile.write('# Point to device-specific lib directory.\n')
     outfile.write('# This is where the vectors code is located.\n')
-    outfile.write(f'-L <CFGDIR>/{os.path.dirname(default_ld_path)}\n\n')
+    outfile.write(f'-L "<CFGDIR>/{os.path.dirname(default_ld_path)}"\n\n')
+
+    outfile.write(f'# Tell Clang to look in the device-specifc directory for some files.\n')
+    outfile.write(f'# In particular, we put crt0.o in here since that is device-speciifc.\n')
+    outfile.write(f'-B "<CFGDIR>/{os.path.dirname(default_ld_path)}"\n\n')
 
     outfile.write('# Set default linker script.\n')
     outfile.write('# This is used only if -T is not specified at link time.\n')
-    outfile.write(f'-Wl,--default-script=<CFGDIR>/{default_ld_path}\n\n')
+    outfile.write(f'-Wl,--default-script="<CFGDIR>/{default_ld_path}"\n\n')
 
     outfile.write('# Useful target-specific macros.\n')
     macros = _get_target_macros(devinfo)
@@ -105,16 +109,18 @@ def _get_common_options() -> str:
         # Specify a sysroot so hopefully Clang will look only in its install location rather than
         # trying to find headers and stuff in actual system directories. This is also where
         # "multilib.yaml" is located.
-        --sysroot=<CFGDIR>/../cortex-m
+        --sysroot="<CFGDIR>/../cortex-m"
 
         # Specify system include directories
-        -isystem <CFGDIR>/../cortex-m/CMSIS/Core/Include
-        -isystem <CFGDIR>/../cortex-m/include
+        -isystem "<CFGDIR>/../cortex-m/CMSIS/Core/Include"
+        -isystem "<CFGDIR>/../cortex-m/include"
 
         # Ensure we are using the linker and runtimes bundled with this toolchain. Clang can try to
         # use the system runtime and linker, which we do not want.
         -rtlib=compiler-rt
         -fuse-ld=lld
+        -stdlib=libc++
+        -unwindlib=libunwind
         ''')
 
 

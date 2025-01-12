@@ -158,18 +158,18 @@ def _get_memory_symbols(address_spaces: list[DeviceAddressSpace]) -> str:
     '''
     biggest_flash_region = _find_biggest_internal_region(address_spaces, 'flash')
     biggest_ram_region = _find_biggest_internal_region(address_spaces, 'ram')
-
+# TODO: We need to find the boot flash region, too, because that is where the vector table goes.
     if biggest_flash_region is None  or  biggest_ram_region is None:
         return ''
 
     symbol_str: str = f'''
         /* Internal flash base address and size in bytes. */
-        __ROM_BASE = 0x{biggest_flash_region.start_addr :08X}
-        __ROM_SIZE = 0x{biggest_flash_region.size :08X}
+        __ROM_BASE = 0x{biggest_flash_region.start_addr :08X};
+        __ROM_SIZE = 0x{biggest_flash_region.size :08X};
 
         /* Internal RAM base address and size in bytes. */
-        __RAM_BASE = 0x{biggest_ram_region.start_addr :08X}
-        __RAM_SIZE = 0x{biggest_ram_region.size :08X}
+        __RAM_BASE = 0x{biggest_ram_region.start_addr :08X};
+        __RAM_SIZE = 0x{biggest_ram_region.size :08X};
 
         /* Stack and heap configuration. 
            Modify these using the --defsym option to the linker. */
@@ -407,7 +407,7 @@ def _get_standard_SECTIONS() -> str:
             __HeapLimit = .;
           } > ram
 
-          .stack (ORIGIN(RAM) + LENGTH(RAM) - __STACK_SIZE - __STACKSEAL_SIZE) (NOLOAD) :
+          .stack (ORIGIN(ram) + LENGTH(ram) - __STACK_SIZE - __STACKSEAL_SIZE) (NOLOAD) :
           {
             . = ALIGN(8);
             __StackLimit = .;
@@ -421,7 +421,7 @@ def _get_standard_SECTIONS() -> str:
              to use ARMv8-M stack sealing uncomment '.stackseal' section
            */
           /*
-          .stackseal (ORIGIN(RAM) + LENGTH(RAM) - __STACKSEAL_SIZE) (NOLOAD) :
+          .stackseal (ORIGIN(ram) + LENGTH(ram) - __STACKSEAL_SIZE) (NOLOAD) :
           {
             . = ALIGN(8);
             __StackSeal = .;
@@ -448,7 +448,7 @@ def _get_fuse_SECTIONS(addr_spaces: list[DeviceAddressSpace], fuses: PeripheralG
             section_addr = ref.offset + _find_start_of_address_space(addr_spaces, ref.addr_space)
             section_name = '.' + ref.instance_name.lower()
 
-            fuse_str += f'\n{section_name} 0x{section_addr :08X} READONLY :\n'
+            fuse_str += f'\n{section_name} 0x{section_addr :08X} :\n'
             fuse_str += '{\n'
             fuse_str += f'  KEEP(*({section_name}))\n'
             fuse_str += '}\n'

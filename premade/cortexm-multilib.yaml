@@ -104,8 +104,6 @@ Mappings:
   Flags: [-march=thumbv8.1m.main+mve.fp]
 - Match: -march=thumbv8\.[1-9]m\.main.*\+mve($|\+).*
   Flags: [-march=thumbv8.1m.main+mve]
-- Match: -march=thumbv8\.[1-9]m\.main.*\+mve($|\+).*
-  Flags: [-march=thumbv8.1m.main]
 
 # Hierarchy among FPUs: fpvN-d16 is a superset of fpvN-sp-d16, and
 # fpvN-d16 is a superset of fpv[N-1]-d16, for all N.

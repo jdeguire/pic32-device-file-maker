@@ -1,4 +1,4 @@
-//{DEST: cortex-m/lib/startup.c}
+//{DEST: cortex-m/startup.c}
 //{LICENSE: CMSIS}
 
 /* This is the startup code for the PIC32 and SAM Cortex-M devices. This is based on the example
