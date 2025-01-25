@@ -39,7 +39,7 @@ extern void __attribute__((weak, long_call)) _on_bootstrap(void);
    Vector Extensions because that uses the 16 double-precision FPU registers as 8 128-bit vector
    registers.
  */
-void __attribute__((weak)) _EnableFpu(void)
+void __attribute__((weak, section(".reset"))) _EnableFpu(void)
 {
 #if (defined(__ARM_FP) && (0 != __ARM_FP))  ||  (defined(__ARM_FEATURE_MVE) && (__ARM_FEATURE_MVE > 0))
     SCB->CPACR |= 0x00F00000;
@@ -59,7 +59,7 @@ void __attribute__((weak)) _EnableFpu(void)
 /* Enable the Cortex-M Cache Controller with default values. This is used to supplement Cortex-M
    devices that do not have a CPU cache.
    */
-void __attribute__((weak)) _EnableCmccCache(void)
+void __attribute__((weak, section(".reset"))) _EnableCmccCache(void)
 {
 #if defined(ID_CMCC)
     CMCC_REGS->CTRL |= CMCC_CTRL_CEN_Msk;
@@ -68,7 +68,7 @@ void __attribute__((weak)) _EnableCmccCache(void)
 
 /* Enable the Cortex-M CPU instruction and data caches. This applies to CPUs with built-in caches.
    */
-void __attribute__((weak)) _EnableCpuCache(void)
+void __attribute__((weak, section(".reset"))) _EnableCpuCache(void)
 {
     // These invalidate the caches before enabling them.
 #if __ICACHE_PRESENT == 1
@@ -81,7 +81,7 @@ void __attribute__((weak)) _EnableCpuCache(void)
 
 /* Enable branch prediction and the Low Overhead Branch extension if either are present.
  */
-void __attribute__((weak)) _EnableBranchCaches(void)
+void __attribute__((weak, section(".reset"))) _EnableBranchCaches(void)
 {
 #if defined(SCB_CCR_LOB_Msk)
   /* Enable Loop and branch info cache */
@@ -100,7 +100,7 @@ void __attribute__((weak)) _EnableBranchCaches(void)
 /* Initialize data found in the .data and .bss sections. This is based on the __cmsis_start()
    function found in "CMSIS/Core/Include/m-profile/cmsis_gcc_m.h".
    */
-void __attribute__((weak)) _InitData(void)
+void __attribute__((weak, section(".reset"))) _InitData(void)
 {
     typedef struct __copy_table {
         uint32_t const* src;
@@ -136,7 +136,7 @@ void __attribute__((weak)) _InitData(void)
 
 /* Call compiler-generated initialization routines for C and C++.
    */
-void __attribute__((weak)) _LibcInitArray(void)
+void __attribute__((weak, section(".reset"))) _LibcInitArray(void)
 {
     // These are defined in the linker script.
     extern void (*__preinit_array_start)(void);
@@ -165,10 +165,10 @@ void __attribute__((weak)) _LibcInitArray(void)
 /* The entry point at which the CPU starts execution. The address of this function is in the vector
    table and the CPU fetches it upon power up or reset.
    */
-void __attribute((noreturn)) Reset_Handler(void)
+void __attribute((noreturn, section(".reset"))) Reset_Handler(void)
 {
-    /* Initialize the stack pointer. This is normally done by the CPU on reset by reading the first
-       entry in the vector table, but do this in case the vector table is not at address 0x0000. */
+    /* Initialize the process stack pointer. The main stack pointer is initialized by the CPU on 
+       reset by reading the first entry in the vector table. */
     __set_PSP((uint32_t)(&__INITIAL_SP));
 
     /* Initialize stack limit registers for Armv8-M Main devices. These do nothing for

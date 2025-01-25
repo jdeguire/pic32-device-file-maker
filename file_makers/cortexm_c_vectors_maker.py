@@ -119,7 +119,7 @@ def _get_default_handlers() -> str:
         }
 
         /* ----- Reset Handler Declaration: Provided by the startup code ----- */
-        void __attribute__((noreturn)) Reset_Handler(void);
+        void __attribute__((noreturn, section(".reset"))) Reset_Handler(void);
         ''')
 
 

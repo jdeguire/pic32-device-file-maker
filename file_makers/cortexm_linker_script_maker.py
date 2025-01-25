@@ -57,16 +57,29 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     for addr_space in unique_addr_spaces:
         addr_space.mem_regions.sort(key=operator.attrgetter('start_addr'))
 
+    # Find our main memory regions for flash and RAM. For now, assume that boot flash regions
+    # have "bfm" in the name.
+    main_flash_region = _find_biggest_internal_region(unique_addr_spaces, 'flash')
+    main_ram_region = _find_biggest_internal_region(unique_addr_spaces, 'ram')
+    main_bootflash_region = _find_biggest_internal_region(unique_addr_spaces, 'flash', 'bfm')
+
+    if not main_flash_region:
+        raise RuntimeError(f'Failed to find a program flash region for {devinfo.name}')
+    if not main_ram_region:
+        raise RuntimeError(f'Failed to find a RAM region for {devinfo.name}')
+    # Do not check for bootflash region because not all devices have boot flash.
+
     # Now we can output the actual linker script bits.
-    outfile.write(_get_memory_symbols(unique_addr_spaces))
+    outfile.write(_get_memory_symbols(main_flash_region, main_ram_region))
     outfile.write('\n\n')
-    outfile.write(_get_MEMORY_command(unique_addr_spaces))
+    outfile.write(_get_MEMORY_command(unique_addr_spaces, main_flash_region, main_ram_region,
+                                      main_bootflash_region))
     outfile.write('\n\n')
     outfile.write('ENTRY(Reset_Handler)')
     outfile.write('\n\n')
 
     outfile.write('SECTIONS\n{\n')
-    outfile.write(_get_standard_SECTIONS())
+    outfile.write(_get_standard_SECTIONS(main_flash_region, main_ram_region, main_bootflash_region))
 
     # Fuses are special because unlike other peripherals with their fixed locations, fuses
     # need to be programmed into the flash at the correct spot. We need to create linker sections
@@ -127,17 +140,23 @@ def _remove_overlapping_memory(address_spaces: list[DeviceAddressSpace]) -> list
 
 
 def _find_biggest_internal_region(address_spaces: list[DeviceAddressSpace],
-                                  type: str) -> DeviceMemoryRegion | None:
+                                  type: str,
+                                  partial_name: str = '') -> DeviceMemoryRegion | None:
     '''Find and return the largest internal memory region of the given type (flash, ram, io, etc.).
 
-    This will return a copy of the region with the starting address of the containing address space
-    added to the found region. This will return None if a region of the given type cannot be found.
+    Use the 'partial_name' parameter to further filter regions to only ones containing the given
+    string in their name. This match is not case sensitive. This will return a copy of the region
+    with the starting address of the containing address space added to the found region. This will
+    return None if a region of the given type cannot be found.
     '''
     biggest: DeviceMemoryRegion | None = None
 
     for addr_space in address_spaces:
         for region in addr_space.mem_regions:
             if region.external  or  type != region.type.lower():
+                continue
+
+            if partial_name  and  partial_name.lower() not in region.name.lower():
                 continue
 
             if not biggest or region.size > biggest.size:
@@ -152,24 +171,19 @@ def _find_biggest_internal_region(address_spaces: list[DeviceAddressSpace],
     return biggest
 
 
-def _get_memory_symbols(address_spaces: list[DeviceAddressSpace]) -> str:
+def _get_memory_symbols(main_flash_region: DeviceMemoryRegion,
+                        main_ram_region: DeviceMemoryRegion) -> str:
     '''Return a set of linker symbols giving the start and size of ROM, RAM, and any other useful
     tidbits.
     '''
-    biggest_flash_region = _find_biggest_internal_region(address_spaces, 'flash')
-    biggest_ram_region = _find_biggest_internal_region(address_spaces, 'ram')
-# TODO: We need to find the boot flash region, too, because that is where the vector table goes.
-    if biggest_flash_region is None  or  biggest_ram_region is None:
-        return ''
-
     symbol_str: str = f'''
         /* Internal flash base address and size in bytes. */
-        __ROM_BASE = 0x{biggest_flash_region.start_addr :08X};
-        __ROM_SIZE = 0x{biggest_flash_region.size :08X};
+        __ROM_BASE = 0x{main_flash_region.start_addr :08X};
+        __ROM_SIZE = 0x{main_flash_region.size :08X};
 
         /* Internal RAM base address and size in bytes. */
-        __RAM_BASE = 0x{biggest_ram_region.start_addr :08X};
-        __RAM_SIZE = 0x{biggest_ram_region.size :08X};
+        __RAM_BASE = 0x{main_ram_region.start_addr :08X};
+        __RAM_SIZE = 0x{main_ram_region.size :08X};
 
         /* Stack and heap configuration. 
            Modify these using the --defsym option to the linker. */
@@ -184,15 +198,12 @@ def _get_memory_symbols(address_spaces: list[DeviceAddressSpace]) -> str:
     return textwrap.dedent(symbol_str)
 
 
-def _get_MEMORY_command(address_spaces: list[DeviceAddressSpace]) -> str:
+def _get_MEMORY_command(address_spaces: list[DeviceAddressSpace],
+                        main_flash_region: DeviceMemoryRegion,
+                        main_ram_region: DeviceMemoryRegion,
+                        main_bootflash_region: DeviceMemoryRegion) -> str:
     '''Return the MEMORY command for GNU linker scripts that lists the memory regions in the device.
     '''
-    biggest_flash_region = _find_biggest_internal_region(address_spaces, 'flash')
-    biggest_ram_region = _find_biggest_internal_region(address_spaces, 'ram')
-
-    if biggest_flash_region is None  or  biggest_ram_region is None:
-        return ''
-
     memory_cmd: str = 'MEMORY\n{\n'
 
     for addr_space in address_spaces:
@@ -203,122 +214,49 @@ def _get_MEMORY_command(address_spaces: list[DeviceAddressSpace]) -> str:
 
             # We need to add some region attributes to the main flash and RAM sections. Unfortunately,
             # the device info we can get from the ATDF files is not totally helpful here.
-            if name == biggest_flash_region.name.lower():
+            if name == main_flash_region.name.lower():
                 memory_cmd += f'  {name :<17} (rx)  : ORIGIN = 0x{start :08X}, LENGTH = 0x{size :08X}\n'
-            elif name == biggest_ram_region.name.lower():
+            elif main_bootflash_region  and  name == main_bootflash_region.name.lower():
+                memory_cmd += f'  {name :<17} (rx)  : ORIGIN = 0x{start :08X}, LENGTH = 0x{size :08X}\n'
+            elif name == main_ram_region.name.lower():
                 memory_cmd += f'  {name :<17} (rwx) : ORIGIN = 0x{start :08X}, LENGTH = 0x{size :08X}\n'
             else:
                 memory_cmd += f'  {name :<23} : ORIGIN = 0x{start :08X}, LENGTH = 0x{size :08X}\n'
 
     memory_cmd += '}\n\n'
 
-    # The ATDF files are not consistent with the names of the main flash and RAM regions, so add
-    # these aliases if needed to make dealing with the output sections a little easier.
-    if 'flash' != biggest_flash_region.name.lower():
-        memory_cmd += f'REGION_ALIAS("flash", {biggest_flash_region.name.lower()});\n'
-    if 'ram' != biggest_flash_region.name.lower():
-        memory_cmd += f'REGION_ALIAS("ram", {biggest_ram_region.name.lower()});\n'
-
     return memory_cmd
 
 
-def _get_standard_SECTIONS() -> str:
+def _get_standard_SECTIONS(main_flash_region: DeviceMemoryRegion,
+                           main_ram_region: DeviceMemoryRegion,
+                           main_bootflash_region: DeviceMemoryRegion) -> str:
     '''Return the standard sections that would be in a SECTIONS command for Arm linker scripts.
      
     The SECTIONS command indicates how object file sections will map into the memory regions from
-    the MEMORY command.
+    the MEMORY command. The names of the program flash, boot flash, and RAM memory regions are not
+    consistent in the ATDF files for different devices, so the caller will need to provide those.
     '''
-    sections_cmd: str = textwrap.dedent('''
+    vectors_region: str = main_flash_region.name.lower()
+    if main_bootflash_region:
+        vectors_region = main_bootflash_region.name.lower()
+
+    progflash_name: str = main_flash_region.name.lower()
+    ram_name: str = main_ram_region.name.lower()
+
+    sections_cmd: str = textwrap.dedent(f'''
+          .vectors :
+          {{
+            KEEP(*(.vectors*))
+            KEEP(*(.reset*))
+          }} > {vectors_region}
+
           .text :
-          {
-            KEEP(*(.vectors))
+          {{
             *(.text*)
 
             KEEP(*(.init))
             KEEP(*(.fini))
-
-            /* .ctors */
-            *crtbegin.o(.ctors)
-            *crtbegin?.o(.ctors)
-            *(EXCLUDE_FILE(*crtend?.o *crtend.o) .ctors)
-            *(SORT(.ctors.*))
-            *(.ctors)
-
-            /* .dtors */
-            *crtbegin.o(.dtors)
-            *crtbegin?.o(.dtors)
-            *(EXCLUDE_FILE(*crtend?.o *crtend.o) .dtors)
-            *(SORT(.dtors.*))
-            *(.dtors)
-
-            *(.rodata*)
-
-            KEEP(*(.eh_frame*))
-          } > flash
-
-          /*
-           * SG veneers:
-           * All SG veneers are placed in the special output section .gnu.sgstubs. Its start address
-           * must be set, either with the command line option '--section-start' or in a linker script,
-           * to indicate where to place these veneers in memory.
-           */
-          /*
-          .gnu.sgstubs :
-          {
-            . = ALIGN(32);
-          } > flash
-          */
-          .ARM.extab :
-          {
-            *(.ARM.extab* .gnu.linkonce.armextab.*)
-          } > flash
-
-          __exidx_start = .;
-          .ARM.exidx :
-          {
-            *(.ARM.exidx* .gnu.linkonce.armexidx.*)
-          } > flash
-          __exidx_end = .;
-
-          .copy.table :
-          {
-            . = ALIGN(4);
-            __copy_table_start__ = .;
-
-            LONG (LOADADDR(.data))
-            LONG (ADDR(.data))
-            LONG (SIZEOF(.data) / 4)
-
-            /* Add each additional data section here */
-
-            __copy_table_end__ = .;
-          } > flash
-
-          .zero.table :
-          {
-            . = ALIGN(4);
-            __zero_table_start__ = .;
-
-            LONG (ADDR(.bss))
-            LONG (SIZEOF(.bss) / 4)
-
-            /* Add each additional bss section here */
-
-            __zero_table_end__ = .;
-          } > flash
-
-          /*
-           * This __etext variable is kept for backward compatibility with older,
-           * ASM based startup files.
-           */
-          PROVIDE(__etext = LOADADDR(.data));
-
-          .data : ALIGN(4)
-          {
-            __data_start__ = .;
-            *(vtable)
-            *(.data)
-            *(.data.*)
 
             . = ALIGN(4);
             /* preinit data */
@@ -340,12 +278,95 @@ def _get_standard_SECTIONS() -> str:
             KEEP(*(.fini_array))
             PROVIDE_HIDDEN (__fini_array_end = .);
 
+            /* .ctors */
+            *crtbegin.o(.ctors)
+            *crtbegin?.o(.ctors)
+            *(EXCLUDE_FILE(*crtend?.o *crtend.o) .ctors)
+            *(SORT(.ctors.*))
+            *(.ctors)
+
+            /* .dtors */
+            *crtbegin.o(.dtors)
+            *crtbegin?.o(.dtors)
+            *(EXCLUDE_FILE(*crtend?.o *crtend.o) .dtors)
+            *(SORT(.dtors.*))
+            *(.dtors)
+
+            *(.rodata*)
+
+            KEEP(*(.eh_frame*))
+          }} > {progflash_name}
+
+          /*
+           * SG veneers:
+           * All SG veneers are placed in the special output section .gnu.sgstubs. Its start address
+           * must be set, either with the command line option '--section-start' or in a linker script,
+           * to indicate where to place these veneers in memory.
+           */
+          /*
+          .gnu.sgstubs :
+          {{
+            . = ALIGN(32);
+          }} > {progflash_name}
+          */
+          .ARM.extab :
+          {{
+            *(.ARM.extab* .gnu.linkonce.armextab.*)
+          }} > {progflash_name}
+
+          __exidx_start = .;
+          .ARM.exidx :
+          {{
+            *(.ARM.exidx* .gnu.linkonce.armexidx.*)
+          }} > {progflash_name}
+          __exidx_end = .;
+
+          .copy.table :
+          {{
+            . = ALIGN(4);
+            __copy_table_start__ = .;
+
+            LONG (LOADADDR(.data))
+            LONG (ADDR(.data))
+            LONG (SIZEOF(.data) / 4)
+
+            /* Add each additional data section here */
+
+            __copy_table_end__ = .;
+          }} > {progflash_name}
+
+          .zero.table :
+          {{
+            . = ALIGN(4);
+            __zero_table_start__ = .;
+
+            LONG (ADDR(.bss))
+            LONG (SIZEOF(.bss) / 4)
+
+            /* Add each additional bss section here */
+
+            __zero_table_end__ = .;
+          }} > {progflash_name}
+
+          /*
+           * This __etext variable is kept for backward compatibility with older,
+           * ASM based startup files.
+           */
+          PROVIDE(__etext = LOADADDR(.data));
+
+          .data : ALIGN(4)
+          {{
+            __data_start__ = .;
+            *(vtable)
+            *(.data)
+            *(.data.*)
+
             KEEP(*(.jcr*))
             . = ALIGN(4);
             /* All data end */
             __data_end__ = .;
 
-          } > ram AT > flash
+          }} > {ram_name} AT > {progflash_name}
 
           /*
            * Secondary data section, optional
@@ -356,7 +377,7 @@ def _get_standard_SECTIONS() -> str:
            */
           /*
           .data2 : ALIGN(4)
-          {
+          {{
             . = ALIGN(4);
             __data2_start__ = .;
             *(.data2)
@@ -364,11 +385,11 @@ def _get_standard_SECTIONS() -> str:
             . = ALIGN(4);
             __data2_end__ = .;
 
-          } > ram2 AT > flash
+          }} > {ram_name} AT > {progflash_name}
           */
 
           .bss :
-          {
+          {{
             . = ALIGN(4);
             __bss_start__ = .;
             *(.bss)
@@ -376,7 +397,7 @@ def _get_standard_SECTIONS() -> str:
             *(COMMON)
             . = ALIGN(4);
             __bss_end__ = .;
-          } > ram AT > ram
+          }} > {ram_name} AT > {ram_name}
 
           /*
            * Secondary bss section, optional
@@ -387,51 +408,51 @@ def _get_standard_SECTIONS() -> str:
            */
           /*
           .bss2 :
-          {
+          {{
             . = ALIGN(4);
             __bss2_start__ = .;
             *(.bss2)
             *(.bss2.*)
             . = ALIGN(4);
             __bss2_end__ = .;
-          } > ram2 AT > ram2
+          }} > {ram_name} AT > {ram_name}
           */
 
           .heap (NOLOAD) :
-          {
+          {{
             . = ALIGN(8);
             __end__ = .;
             PROVIDE(end = .);
             . = . + __HEAP_SIZE;
             . = ALIGN(8);
             __HeapLimit = .;
-          } > ram
+          }} > {ram_name}
 
-          .stack (ORIGIN(ram) + LENGTH(ram) - __STACK_SIZE - __STACKSEAL_SIZE) (NOLOAD) :
-          {
+          .stack (ORIGIN({ram_name}) + LENGTH({ram_name}) - __STACK_SIZE - __STACKSEAL_SIZE) (NOLOAD) :
+          {{
             . = ALIGN(8);
             __StackLimit = .;
             . = . + __STACK_SIZE;
             . = ALIGN(8);
             __StackTop = .;
-          } > ram
+          }} > {ram_name}
           PROVIDE(__stack = __StackTop);
 
           /* ARMv8-M stack sealing:
              to use ARMv8-M stack sealing uncomment '.stackseal' section
            */
           /*
-          .stackseal (ORIGIN(ram) + LENGTH(ram) - __STACKSEAL_SIZE) (NOLOAD) :
-          {
+          .stackseal (ORIGIN({ram_name}) + LENGTH({ram_name}) - __STACKSEAL_SIZE) (NOLOAD) :
+          {{
             . = ALIGN(8);
             __StackSeal = .;
             . = . + 8;
             . = ALIGN(8);
-          } > ram
+          }} > {ram_name}
           */
 
           /* Check if data + heap + stack exceeds RAM limit */
-          ASSERT(__StackLimit >= __HeapLimit, "region RAM overflowed with stack")
+          ASSERT(__StackLimit >= __HeapLimit, "RAM region overflowed with stack")
         ''')
 
     return textwrap.indent(sections_cmd, '  ')
