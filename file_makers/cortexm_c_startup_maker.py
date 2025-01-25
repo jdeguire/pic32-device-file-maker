@@ -353,8 +353,8 @@ def _get_reset_handler() -> str:
            */
         void __attribute((noreturn, section(".reset"))) Reset_Handler(void)
         {
-            /* Initialize the process stack pointer. The main stack pointer is initialized by the CPU on 
-            reset by reading the first entry in the vector table. */
+            /* Initialize the process stack pointer. The main stack pointer is initialized by the 
+               CPU on reset by reading the first entry in the vector table. */
             __set_PSP((uint32_t)(&__INITIAL_SP));
 
             /* Initialize stack limit registers for Armv8-M Main devices. These do nothing for
@@ -362,9 +362,9 @@ def _get_reset_handler() -> str:
             __set_MSPLIM((uint32_t)(&__STACK_LIMIT));
             __set_PSPLIM((uint32_t)(&__STACK_LIMIT));
 
-            /* Add stack sealing for Armv8-M based processors. To use this, copy the default linker script
-            for the target device. Update the __STACKSEAL_SIZE near the top and uncomment the ".stackseal"
-            section near the end. */
+            /* Add stack sealing for Armv8-M based processors. To use this, copy the default linker
+               script for the target device. Update the __STACKSEAL_SIZE near the top and uncomment
+               the ".stackseal" section near the end. */
         #if defined (__ARM_FEATURE_CMSE) && (__ARM_FEATURE_CMSE == 3U)
             __TZ_set_STACKSEAL_S((uint32_t *)(&__STACK_SEAL));
         #endif
