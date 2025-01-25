@@ -252,218 +252,218 @@ def _get_standard_SECTIONS(main_flash_region: DeviceMemoryRegion,
     progflash_name: str = main_flash_region.name.lower()
     ram_name: str = main_ram_region.name.lower()
 
-    sections_cmd: str = textwrap.dedent(f'''
-          .vectors :
-          {{
-            KEEP(*(.vectors*))
-            KEEP(*(.reset*))
-          }} > {vectors_region}
+    sections_cmd: str = f'''
+        .vectors :
+        {{
+          KEEP(*(.vectors*))
+          KEEP(*(.reset*))
+        }} > {vectors_region}
 
-          .text :
-          {{
-            *(.text*)
+        .text :
+        {{
+          *(.text*)
 
-            KEEP(*(.init))
-            KEEP(*(.fini))
+          KEEP(*(.init))
+          KEEP(*(.fini))
 
-            . = ALIGN(4);
-            /* preinit data */
-            PROVIDE_HIDDEN (__preinit_array_start = .);
-            KEEP(*(.preinit_array))
-            PROVIDE_HIDDEN (__preinit_array_end = .);
+          . = ALIGN(4);
+          /* preinit data */
+          PROVIDE_HIDDEN (__preinit_array_start = .);
+          KEEP(*(.preinit_array))
+          PROVIDE_HIDDEN (__preinit_array_end = .);
 
-            . = ALIGN(4);
-            /* init data */
-            PROVIDE_HIDDEN (__init_array_start = .);
-            KEEP(*(SORT(.init_array.*)))
-            KEEP(*(.init_array))
-            PROVIDE_HIDDEN (__init_array_end = .);
+          . = ALIGN(4);
+          /* init data */
+          PROVIDE_HIDDEN (__init_array_start = .);
+          KEEP(*(SORT(.init_array.*)))
+          KEEP(*(.init_array))
+          PROVIDE_HIDDEN (__init_array_end = .);
 
-            . = ALIGN(4);
-            /* finit data */
-            PROVIDE_HIDDEN (__fini_array_start = .);
-            KEEP(*(SORT(.fini_array.*)))
-            KEEP(*(.fini_array))
-            PROVIDE_HIDDEN (__fini_array_end = .);
+          . = ALIGN(4);
+          /* finit data */
+          PROVIDE_HIDDEN (__fini_array_start = .);
+          KEEP(*(SORT(.fini_array.*)))
+          KEEP(*(.fini_array))
+          PROVIDE_HIDDEN (__fini_array_end = .);
 
-            /* .ctors */
-            *crtbegin.o(.ctors)
-            *crtbegin?.o(.ctors)
-            *(EXCLUDE_FILE(*crtend?.o *crtend.o) .ctors)
-            *(SORT(.ctors.*))
-            *(.ctors)
+          /* .ctors */
+          *crtbegin.o(.ctors)
+          *crtbegin?.o(.ctors)
+          *(EXCLUDE_FILE(*crtend?.o *crtend.o) .ctors)
+          *(SORT(.ctors.*))
+          *(.ctors)
 
-            /* .dtors */
-            *crtbegin.o(.dtors)
-            *crtbegin?.o(.dtors)
-            *(EXCLUDE_FILE(*crtend?.o *crtend.o) .dtors)
-            *(SORT(.dtors.*))
-            *(.dtors)
+          /* .dtors */
+          *crtbegin.o(.dtors)
+          *crtbegin?.o(.dtors)
+          *(EXCLUDE_FILE(*crtend?.o *crtend.o) .dtors)
+          *(SORT(.dtors.*))
+          *(.dtors)
 
-            *(.rodata*)
+          *(.rodata*)
 
-            KEEP(*(.eh_frame*))
-          }} > {progflash_name}
+          KEEP(*(.eh_frame*))
+        }} > {progflash_name}
 
-          /*
-           * SG veneers:
-           * All SG veneers are placed in the special output section .gnu.sgstubs. Its start address
-           * must be set, either with the command line option '--section-start' or in a linker script,
-           * to indicate where to place these veneers in memory.
-           */
-          /*
-          .gnu.sgstubs :
-          {{
-            . = ALIGN(32);
-          }} > {progflash_name}
+        /*
+          * SG veneers:
+          * All SG veneers are placed in the special output section .gnu.sgstubs. Its start address
+          * must be set, either with the command line option '--section-start' or in a linker script,
+          * to indicate where to place these veneers in memory.
           */
-          .ARM.extab :
-          {{
-            *(.ARM.extab* .gnu.linkonce.armextab.*)
-          }} > {progflash_name}
+        /*
+        .gnu.sgstubs :
+        {{
+          . = ALIGN(32);
+        }} > {progflash_name}
+        */
+        .ARM.extab :
+        {{
+          *(.ARM.extab* .gnu.linkonce.armextab.*)
+        }} > {progflash_name}
 
-          __exidx_start = .;
-          .ARM.exidx :
-          {{
-            *(.ARM.exidx* .gnu.linkonce.armexidx.*)
-          }} > {progflash_name}
-          __exidx_end = .;
+        __exidx_start = .;
+        .ARM.exidx :
+        {{
+          *(.ARM.exidx* .gnu.linkonce.armexidx.*)
+        }} > {progflash_name}
+        __exidx_end = .;
 
-          .copy.table :
-          {{
-            . = ALIGN(4);
-            __copy_table_start__ = .;
+        .copy.table :
+        {{
+          . = ALIGN(4);
+          __copy_table_start__ = .;
 
-            LONG (LOADADDR(.data))
-            LONG (ADDR(.data))
-            LONG (SIZEOF(.data) / 4)
+          LONG (LOADADDR(.data))
+          LONG (ADDR(.data))
+          LONG (SIZEOF(.data) / 4)
 
-            /* Add each additional data section here */
+          /* Add each additional data section here */
 
-            __copy_table_end__ = .;
-          }} > {progflash_name}
+          __copy_table_end__ = .;
+        }} > {progflash_name}
 
-          .zero.table :
-          {{
-            . = ALIGN(4);
-            __zero_table_start__ = .;
+        .zero.table :
+        {{
+          . = ALIGN(4);
+          __zero_table_start__ = .;
 
-            LONG (ADDR(.bss))
-            LONG (SIZEOF(.bss) / 4)
+          LONG (ADDR(.bss))
+          LONG (SIZEOF(.bss) / 4)
 
-            /* Add each additional bss section here */
+          /* Add each additional bss section here */
 
-            __zero_table_end__ = .;
-          }} > {progflash_name}
+          __zero_table_end__ = .;
+        }} > {progflash_name}
 
-          /*
-           * This __etext variable is kept for backward compatibility with older,
-           * ASM based startup files.
-           */
-          PROVIDE(__etext = LOADADDR(.data));
-
-          .data : ALIGN(4)
-          {{
-            __data_start__ = .;
-            *(vtable)
-            *(.data)
-            *(.data.*)
-
-            KEEP(*(.jcr*))
-            . = ALIGN(4);
-            /* All data end */
-            __data_end__ = .;
-
-          }} > {ram_name} AT > {progflash_name}
-
-          /*
-           * Secondary data section, optional
-           *
-           * Remember to add each additional data section
-           * to the .copy.table above to assure proper
-           * initialization during startup.
-           */
-          /*
-          .data2 : ALIGN(4)
-          {{
-            . = ALIGN(4);
-            __data2_start__ = .;
-            *(.data2)
-            *(.data2.*)
-            . = ALIGN(4);
-            __data2_end__ = .;
-
-          }} > {ram_name} AT > {progflash_name}
+        /*
+          * This __etext variable is kept for backward compatibility with older,
+          * ASM based startup files.
           */
+        PROVIDE(__etext = LOADADDR(.data));
 
-          .bss :
-          {{
-            . = ALIGN(4);
-            __bss_start__ = .;
-            *(.bss)
-            *(.bss.*)
-            *(COMMON)
-            . = ALIGN(4);
-            __bss_end__ = .;
-          }} > {ram_name} AT > {ram_name}
+        .data : ALIGN(4)
+        {{
+          __data_start__ = .;
+          *(vtable)
+          *(.data)
+          *(.data.*)
 
-          /*
-           * Secondary bss section, optional
-           *
-           * Remember to add each additional bss section
-           * to the .zero.table above to assure proper
-           * initialization during startup.
-           */
-          /*
-          .bss2 :
-          {{
-            . = ALIGN(4);
-            __bss2_start__ = .;
-            *(.bss2)
-            *(.bss2.*)
-            . = ALIGN(4);
-            __bss2_end__ = .;
-          }} > {ram_name} AT > {ram_name}
+          KEEP(*(.jcr*))
+          . = ALIGN(4);
+          /* All data end */
+          __data_end__ = .;
+
+        }} > {ram_name} AT > {progflash_name}
+
+        /*
+          * Secondary data section, optional
+          *
+          * Remember to add each additional data section
+          * to the .copy.table above to assure proper
+          * initialization during startup.
           */
+        /*
+        .data2 : ALIGN(4)
+        {{
+          . = ALIGN(4);
+          __data2_start__ = .;
+          *(.data2)
+          *(.data2.*)
+          . = ALIGN(4);
+          __data2_end__ = .;
 
-          .heap (NOLOAD) :
-          {{
-            . = ALIGN(8);
-            __end__ = .;
-            PROVIDE(end = .);
-            . = . + __HEAP_SIZE;
-            . = ALIGN(8);
-            __HeapLimit = .;
-          }} > {ram_name}
+        }} > {ram_name} AT > {progflash_name}
+        */
 
-          .stack (ORIGIN({ram_name}) + LENGTH({ram_name}) - __STACK_SIZE - __STACKSEAL_SIZE) (NOLOAD) :
-          {{
-            . = ALIGN(8);
-            __StackLimit = .;
-            . = . + __STACK_SIZE;
-            . = ALIGN(8);
-            __StackTop = .;
-          }} > {ram_name}
-          PROVIDE(__stack = __StackTop);
+        .bss :
+        {{
+          . = ALIGN(4);
+          __bss_start__ = .;
+          *(.bss)
+          *(.bss.*)
+          *(COMMON)
+          . = ALIGN(4);
+          __bss_end__ = .;
+        }} > {ram_name} AT > {ram_name}
 
-          /* ARMv8-M stack sealing:
-             to use ARMv8-M stack sealing uncomment '.stackseal' section
-           */
-          /*
-          .stackseal (ORIGIN({ram_name}) + LENGTH({ram_name}) - __STACKSEAL_SIZE) (NOLOAD) :
-          {{
-            . = ALIGN(8);
-            __StackSeal = .;
-            . = . + 8;
-            . = ALIGN(8);
-          }} > {ram_name}
+        /*
+          * Secondary bss section, optional
+          *
+          * Remember to add each additional bss section
+          * to the .zero.table above to assure proper
+          * initialization during startup.
           */
+        /*
+        .bss2 :
+        {{
+          . = ALIGN(4);
+          __bss2_start__ = .;
+          *(.bss2)
+          *(.bss2.*)
+          . = ALIGN(4);
+          __bss2_end__ = .;
+        }} > {ram_name} AT > {ram_name}
+        */
 
-          /* Check if data + heap + stack exceeds RAM limit */
-          ASSERT(__StackLimit >= __HeapLimit, "RAM region overflowed with stack")
-        ''')
+        .heap (NOLOAD) :
+        {{
+          . = ALIGN(8);
+          __end__ = .;
+          PROVIDE(end = .);
+          . = . + __HEAP_SIZE;
+          . = ALIGN(8);
+          __HeapLimit = .;
+        }} > {ram_name}
 
-    return textwrap.indent(sections_cmd, '  ')
+        .stack (ORIGIN({ram_name}) + LENGTH({ram_name}) - __STACK_SIZE - __STACKSEAL_SIZE) (NOLOAD) :
+        {{
+          . = ALIGN(8);
+          __StackLimit = .;
+          . = . + __STACK_SIZE;
+          . = ALIGN(8);
+          __StackTop = .;
+        }} > {ram_name}
+        PROVIDE(__stack = __StackTop);
+
+        /* ARMv8-M stack sealing:
+            to use ARMv8-M stack sealing uncomment '.stackseal' section
+          */
+        /*
+        .stackseal (ORIGIN({ram_name}) + LENGTH({ram_name}) - __STACKSEAL_SIZE) (NOLOAD) :
+        {{
+          . = ALIGN(8);
+          __StackSeal = .;
+          . = . + 8;
+          . = ALIGN(8);
+        }} > {ram_name}
+        */
+
+        /* Check if data + heap + stack exceeds RAM limit */
+        ASSERT(__StackLimit >= __HeapLimit, "RAM region overflowed with stack")
+        '''
+
+    return textwrap.indent(textwrap.dedent(sections_cmd), '  ')
 
 
 def _get_fuse_SECTIONS(addr_spaces: list[DeviceAddressSpace], fuses: PeripheralGroup) -> str:

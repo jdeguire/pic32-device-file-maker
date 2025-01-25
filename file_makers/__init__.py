@@ -42,7 +42,7 @@
 from . import all_devices_header_maker
 from . import cortexm_c_device_header_maker
 from . import cortexm_c_periph_header_maker
-from . import cortexm_c_vectors_maker
+from . import cortexm_c_startup_maker
 from . import cortexm_config_file_maker
 from . import cortexm_linker_script_maker
 from . import strings
@@ -52,7 +52,7 @@ __all__ = [
     'all_devices_header_maker',
     'cortexm_c_device_header_maker',
     'cortexm_c_periph_header_maker',
-    'cortexm_c_vectors_maker',
+    'cortexm_c_startup_maker',
     'cortexm_config_file_maker',
     'cortexm_linker_script_maker',
     'strings',

@@ -1,0 +1,405 @@
+#! /usr/bin/env python3
+#
+# Copyright (c) 2024, Jesse DeGuire
+#
+# Redistribution and use in source and binary forms, with or without modification, are permitted
+# provided that the following conditions are met:
+# 
+# * Redistributions of source code must retain the above copyright notice, this list of conditions
+#   and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright notice, this list of
+#   conditions and the following disclaimer in the documentation and/or other materials provided
+#   with the distribution.
+# 
+# * Neither the name of the copyright holder nor the names of its contributors may be used to
+#   endorse or promote products derived from this software without specific prior written
+#   permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
+# IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND
+# FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER
+# IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+# OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+'''cortexm_c_startup_maker.py
+
+Contains a single public function to make a C file containing startup code and vector table
+declarations for a single Arm Cortex-M device.
+This is based on the sample startup code found in Arm CMSIS 6 at
+https://github.com/ARM-software/CMSIS_6/blob/main/CMSIS/Core/Template/Device_M/Source/startup_Device.c.
+'''
+
+from device_info import *
+from . import strings
+import textwrap
+from typing import IO
+
+
+def run(proc_header_name: str, interrupts: list[DeviceInterrupt], outfile: IO[str]) -> None:
+    '''Make a C vector definition file for the given device assuming it is a PIC or SAM Cortex-M
+    device.
+
+    The proc_header_name is the name of a header file this can include to get processor-specific
+    info. This can be the processor-specifc header file or an all-encompassing header that will
+    figure out which processor-specific header to use based on macros. This should include the
+    extension but not the full path.
+    '''
+    outfile.write(_get_file_prologue(proc_header_name))
+    outfile.write('\n')
+    outfile.write(_get_default_handlers())
+    outfile.write('\n\n')
+    outfile.write(_get_handler_declarations(interrupts))
+    outfile.write('\n\n')
+    outfile.write(_get_vector_table(interrupts))
+    outfile.write('\n\n')
+
+    outfile.write(_get_startup_feature_functions())
+    outfile.write(_get_data_init_functions())
+    outfile.write(_get_reset_handler())
+
+    # This file does not have an epilogue.
+
+
+def _get_file_prologue(proc_header_name: str) -> str:
+    '''Return a string with the file prologue, which contains the license info, a reference to
+    this project, and some other declarations.
+    '''
+    header: str = ''
+
+    # Write the header block with copyright info.
+    header += '/*\n'
+    header += strings.get_generated_by_string(' * ')
+    header += ' * \n'
+    header += strings.get_cmsis_apache_license(' * ')
+    header += ' */\n'
+
+    decls: str = f'''
+        #include <{proc_header_name}>
+        #include <stdint.h>
+
+        /* These are provided by the device linker script.
+           These names are aliases defined by CMSIS for the linker symbols. */
+        extern uint32_t __INITIAL_SP;
+        extern uint32_t __STACK_LIMIT;
+        #if defined (__ARM_FEATURE_CMSE) && (__ARM_FEATURE_CMSE == 3U)
+        extern uint32_t __STACK_SEAL;
+        #endif
+
+        extern void _init(void);         // Defined in Musl library at must/crt/arm/crti.s.
+        extern int main(void);
+        extern void exit(int status);
+
+        /* Define these to run code during startup.  The _on_reset() function is run almost
+           immediately, so the cache and FPU will not be usable unless they are enabled in
+           _on_reset(). The _on_bootstrap() function is run just before main is called and so
+           everything should be initialized.
+           */
+        extern void __attribute__((weak, long_call)) _on_reset(void);
+        extern void __attribute__((weak, long_call)) _on_bootstrap(void);
+        '''
+
+    return header + textwrap.dedent(decls)
+
+
+def _get_default_handlers() -> str:
+    '''Return a string containing definitions for the default interrupt handler and the Hard Fault
+    interrupt handler.
+    '''
+    handlers: str = '''
+        /* ----- Default Handlers: Provide your own definitions to override these. ----- */
+        // Default Hard Fault Handler
+        void __attribute__((noreturn, weak)) HardFault_Handler(void)
+        {
+        #ifdef __DEBUG
+            __BKPT(0);
+        #endif
+            while(1)
+            {}
+        }
+
+        // Default Handler For Other Exceptions and Interrupts
+        void __attribute__((noreturn, weak)) Default_Handler(void)
+        {
+        #ifdef __DEBUG
+            __BKPT(0);
+        #endif
+            while(1)
+            {}
+        }
+
+        // Default Handler For Reserved Interrupt Vectors
+        void __attribute__((noreturn, weak)) Reserved_Handler(void)
+        {
+        #ifdef __DEBUG
+            __BKPT(0);
+        #endif
+            while(1)
+            {}
+        }
+        '''
+
+    return textwrap.dedent(handlers)
+
+
+def _get_handler_declarations(interrupts: list[DeviceInterrupt]) -> str:
+    '''Return a string containing weak declarations for the interrupt and exception handlers not
+    already covered by _get_default_handlers().
+
+    Most of these will be weak aliases of the Default_Handler(). The idea is that users will create
+    their own definitions in their code, which will override these weak versions.
+    '''
+    decl_str: str = '/* ----- Exception and Interrupt Handlers ----- */\n'
+    decl_str += '/* Provide your own definitions to override these. */\n'
+
+    for intr in interrupts:
+        # Skip these because we already defined them in _get_default_handlers().
+        if 'HardFault' == intr.name  or  'Reset' == intr.name:
+            continue
+
+        func_str = f'{intr.name}_Handler'
+        decl_str += f'void {func_str :<32}(void) __attribute__((weak, alias("Default_Handler")));\n'
+
+    return decl_str
+
+
+def _get_vector_table(interrupts: list[DeviceInterrupt]) -> str:
+    '''Return a string containing the definition of the vector table for this device.
+
+    The vector table is an array of function pointers, but the very first entry is the initial top
+    of the stack to be loaded into the stack pointer register.
+    '''
+    intr_decls: list[str] = []
+    intr_decls.append('    (void (*)(void))&__INITIAL_SP,   /*     Initial Stack Pointer */')
+
+    current_index = interrupts[0].index
+
+    for intr in interrupts:
+        # Fill in gaps with the reserved handler.
+        while current_index < intr.index:
+            intr_decls.append('    Reserved_Handler,                /*     Reserved */')
+            current_index += 1
+        
+        entry = f'{intr.name}_Handler,'
+        intr_decls.append(f'    {entry :<32} /* {intr.index :3} {intr.caption} */')
+
+        current_index += 1
+
+    # +1 for initial stack value.
+    num_entries = current_index - interrupts[0].index + 1
+
+    vec_table_decl =  f'extern const void(*__VECTOR_TABLE[{num_entries}])(void);\n'
+    vec_table_decl += f'       const void(*__VECTOR_TABLE[{num_entries}])(void) '
+    vec_table_decl +=  '__attribute__((used, retain, section(".vectors"))) = {\n'
+    vec_table_decl += '\n'.join(intr_decls)
+    vec_table_decl += '\n};'
+
+    return vec_table_decl
+
+
+def _get_startup_feature_functions() -> str:
+    '''Return a string containing functions to enable device features like the FPU or cache at
+    startup.
+    '''
+    funcs: str = '''
+        /* Enable the FPU for devices that have one. This is also used for devices that support the 
+           M-Profile Vector Extensions because that uses the 16 double-precision FPU registers as 8
+           128-bit vector registers.
+           */
+        void __attribute__((weak, section(".reset"))) _EnableFpu(void)
+        {
+        #if (defined(__ARM_FP) && (0 != __ARM_FP))  ||  (defined(__ARM_FEATURE_MVE) && (__ARM_FEATURE_MVE > 0))
+            SCB->CPACR |= 0x00F00000;
+            __DSB();
+            __ISB();
+
+            // Initialize the FPSCR register to clear out status info from before a warn reset.
+            // If present, set FPSCR.LTPSIZE to 4. This relates to the Low Overhead Branch extension.
+        #  if defined(FPU_FPDSCR_LTPSIZE_Msk)
+            __set_FPSCR(0x040000);
+        #  else
+            __set_FPSCR(0);
+        #  endif
+        #endif
+        }
+
+        /* Enable the Cortex-M Cache Controller with default values. This is used to supplement
+           Cortex-M devices that do not have a CPU cache.
+           */
+        void __attribute__((weak, section(".reset"))) _EnableCmccCache(void)
+        {
+        #if defined(ID_CMCC)
+            CMCC_REGS->CTRL |= CMCC_CTRL_CEN_Msk;
+        #endif
+        }
+
+        /* Enable the Cortex-M CPU instruction and data caches. This applies to CPUs with built-in
+           caches.
+           */
+        void __attribute__((weak, section(".reset"))) _EnableCpuCache(void)
+        {
+            // These invalidate the caches before enabling them.
+        #if __ICACHE_PRESENT == 1
+            SCB_EnableICache();
+        #endif
+        #if __DCACHE_PRESENT == 1
+            SCB_EnableDCache();
+        #endif
+        }
+
+        /* Enable branch prediction and the Low Overhead Branch extension if either are present.
+           */
+        void __attribute__((weak, section(".reset"))) _EnableBranchCaches(void)
+        {
+        #if defined(SCB_CCR_LOB_Msk)
+            /* Enable Loop and branch info cache */
+            SCB->CCR |= SCB_CCR_LOB_Msk;
+        #endif
+        #if defined(SCB_CCR_BP_Msk)
+            /* Enable Branch Prediction */
+            SCB->CCR |= SCB_CCR_BP_Msk;
+        #endif
+        #if defined(SCB_CCR_LOB_Msk) || defined(SCB_CCR_BP_Msk)
+            __DSB();
+            __ISB();
+        #endif
+        }
+        '''
+
+    return textwrap.dedent(funcs)
+
+def _get_data_init_functions() -> str:
+    '''Return a string containing functions used to initialize data sections and call C++ 
+    constructors.
+    '''
+    funcs: str = '''
+        /* Initialize data found in the .data and .bss sections. This is based on the 
+           __cmsis_start() function found in "CMSIS/Core/Include/m-profile/cmsis_gcc_m.h".
+           */
+        void __attribute__((weak, section(".reset"))) _InitData(void)
+        {
+            typedef struct __copy_table {
+                uint32_t const* src;
+                uint32_t* dest;
+                uint32_t  wlen;
+            } __copy_table_t;
+
+            typedef struct __zero_table {
+                uint32_t* dest;
+                uint32_t  wlen;
+            } __zero_table_t;
+
+            // These are defined in the linker script
+            extern const __copy_table_t __copy_table_start__;
+            extern const __copy_table_t __copy_table_end__;
+            extern const __zero_table_t __zero_table_start__;
+            extern const __zero_table_t __zero_table_end__;
+
+            // Copy .data sections.
+            for(__copy_table_t const* pTable = &__copy_table_start__; pTable < &__copy_table_end__; ++pTable)
+            {
+                for(uint32_t i = 0u; i < pTable->wlen; ++i)
+                    pTable->dest[i] = pTable->src[i];
+            }
+
+            // Zero out .bss sections.
+            for(__zero_table_t const* pTable = &__zero_table_start__; pTable < &__zero_table_end__; ++pTable)
+            {
+                for(uint32_t i = 0u; i < pTable->wlen; ++i)
+                    pTable->dest[i] = 0u;
+            }
+        }
+
+        /* Call compiler-generated initialization routines for C and C++.
+           */
+        void __attribute__((weak, section(".reset"))) _LibcInitArray(void)
+        {
+            // These are defined in the linker script.
+            extern void (*__preinit_array_start)(void);
+            extern void (*__preinit_array_end)(void);
+            extern void (*__init_array_start)(void);
+            extern void (*__init_array_end)(void);
+
+            void (**preinit_ptr)(void) = &__preinit_array_start;
+            while(preinit_ptr < &__preinit_array_end)
+            {
+                (*preinit_ptr)();
+                ++preinit_ptr;
+            }
+
+            _init();
+
+            void (**init_ptr)(void) = &__init_array_start;
+            while(init_ptr < &__init_array_end)
+            {
+                (*init_ptr)();
+                ++init_ptr;
+            }
+        }
+        '''
+
+    return textwrap.dedent(funcs)
+
+
+def _get_reset_handler() -> str:
+    '''Return a string containing the reset handler function for Cortex-M devices.
+    '''
+    reset: str = '''
+        /* The entry point at which the CPU starts execution. The address of this function is in the
+           vector table and the CPU fetches it upon power up or reset.
+           */
+        void __attribute((noreturn, section(".reset"))) Reset_Handler(void)
+        {
+            /* Initialize the process stack pointer. The main stack pointer is initialized by the CPU on 
+            reset by reading the first entry in the vector table. */
+            __set_PSP((uint32_t)(&__INITIAL_SP));
+
+            /* Initialize stack limit registers for Armv8-M Main devices. These do nothing for
+            older devices. */
+            __set_MSPLIM((uint32_t)(&__STACK_LIMIT));
+            __set_PSPLIM((uint32_t)(&__STACK_LIMIT));
+
+            /* Add stack sealing for Armv8-M based processors. To use this, copy the default linker script
+            for the target device. Update the __STACKSEAL_SIZE near the top and uncomment the ".stackseal"
+            section near the end. */
+        #if defined (__ARM_FEATURE_CMSE) && (__ARM_FEATURE_CMSE == 3U)
+            __TZ_set_STACKSEAL_S((uint32_t *)(&__STACK_SEAL));
+        #endif
+
+            if(_on_reset)
+                _on_reset();
+
+            _EnableFpu();
+            _EnableCpuCache();
+            _EnableBranchCaches();
+            _EnableCmccCache();
+
+            /* Set the vector table base address, if supported by this device. */
+        #ifdef SCB_VTOR_TBLOFF_Msk
+            extern const void(*__VECTOR_TABLE[])(void);
+            uint32_t vtor_addr = (uint32_t)__VECTOR_TABLE;
+            SCB->VTOR = (vtor_addr & SCB_VTOR_TBLOFF_Msk);
+        #endif
+
+            _InitData();
+            _LibcInitArray();
+
+            if(_on_bootstrap)
+                _on_bootstrap();
+
+            /* The app is ready to go, call main. */
+            exit(main());
+
+        #ifdef __DEBUG
+            __BKPT(0);
+        #endif
+
+            /* Nothing left to do but spin here forever. */
+            while(1) {}
+        }
+        '''
+    
+    return textwrap.dedent(reset)

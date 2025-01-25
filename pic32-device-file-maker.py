@@ -291,12 +291,12 @@ if '__main__' == __name__:
                 if full_name not in peripherals_to_make:
                     peripherals_to_make[full_name] = periph
 
-        # C interrupt vectors file
+        # C device startup file
         #
-        vectors_src_path = lib_proc_prefix / devinfo.name.lower() / 'vectors.c'
-        with open_for_writing(vectors_src_path) as vec:
+        startup_src_path = lib_proc_prefix / devinfo.name.lower() / 'startup.c'
+        with open_for_writing(startup_src_path) as vec:
             proc_header_name = 'which_pic32.h'
-            cortexm_c_vectors_maker.run(proc_header_name, devinfo.interrupts, vec)
+            cortexm_c_startup_maker.run(proc_header_name, devinfo.interrupts, vec)
 
         # Clang configuration file
         #
