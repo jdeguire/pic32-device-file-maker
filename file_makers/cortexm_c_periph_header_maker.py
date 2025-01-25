@@ -34,8 +34,9 @@ This is based on the sample headers found in Arm CMSIS 6 at
 https://github.com/ARM-software/CMSIS_6/blob/main/CMSIS/Core/Template/Device_M/Include/.
 '''
 
-from device_info import *
 from . import strings
+from device_info import *
+import operator
 from typing import IO
 
 
@@ -49,7 +50,9 @@ def run(basename: str, peripheral: PeripheralGroup, outfile: IO[str]) -> None:
 
     outfile.write('/* ----- Register Bitfield Macros ----- */\n')
     for reg_group in peripheral.reg_groups:
-        for member in reg_group.members:
+        sorted_members = sorted(reg_group.members, key=operator.attrgetter('offset'))
+
+        for member in sorted_members:
             if not member.is_subgroup:
                 outfile.write(_get_register_macros(peripheral.name, member))
                 outfile.write('\n')
@@ -100,7 +103,9 @@ def _get_register_macros(periph_name: str, reg: RegisterGroupMember) -> str:
     # Some registers on some devices (SAME70) repeat the peripheral name in them. Strip it off so
     # we don't duplicate it later.
     if reg.name.startswith(periph_name + '_'):
-        reg_name = reg.name.split('_', 1)[1]
+        reg_name = reg.name[len(periph_name)+1:]
+    elif reg.name.startswith(periph_name):
+        reg_name = reg.name[len(periph_name):]
     else:
         reg_name = reg.name
 
@@ -274,7 +279,9 @@ def _get_register_struct(periph_name: str, group: RegisterGroup, mode: str = '')
     reg_struct += f'typedef struct _{struct_name}\n{{\n'
     current_offset: int = 0
 
-    for member in group.members:
+    sorted_members = sorted(group.members, key=operator.attrgetter('offset'))
+
+    for member in sorted_members:
         # If we were given a mode, then ouptut only registers that have the same mode or no mode. 
         if mode  and  member.mode  and  mode != member.mode:
             continue
@@ -282,7 +289,7 @@ def _get_register_struct(periph_name: str, group: RegisterGroup, mode: str = '')
         # Do we need to add some padding for unused space?
         if current_offset != member.offset:
             pad = member.offset - current_offset
-            reg_struct += f'    uint8_t                  unused_0x{current_offset :<02X}[{pad}];\n'
+            reg_struct += f'    uint8_t                  unused_0x{current_offset:02X}[{pad}];\n'
             current_offset = member.offset
 
         # Get the type name.
@@ -291,9 +298,13 @@ def _get_register_struct(periph_name: str, group: RegisterGroup, mode: str = '')
         else:
             subgroup_type = _get_reg_type_from_size(member.size)
 
-        # Some registers on some devices repeat the peripheral name in them. Strip that off.
-        if member.name.startswith(periph_name + '_'):
-            mem_name = member.name.split('_', 1)[1]
+        # Put the peripheral name in front of the register name. This is redundant, but is
+        # unfortunately needed to avoid potentially conflicting with other macros.
+        if not member.name.startswith(periph_name + '_'):
+            if member.name.startswith(periph_name):
+                mem_name = periph_name + '_' + member.name[len(periph_name):]
+            else:
+                mem_name = periph_name + '_' + member.name
         else:
             mem_name = member.name
 
@@ -311,7 +322,7 @@ def _get_register_struct(periph_name: str, group: RegisterGroup, mode: str = '')
     # Do we need to add padding to the end of the struct/union?
     if current_offset < group.size:
         pad = group.size - current_offset
-        reg_struct += f'    uint8_t                  unused_0x{current_offset :<02X}[{pad}];\n'
+        reg_struct += f'    uint8_t                  unused_0x{current_offset:02X}[{pad}];\n'
 
     reg_struct += f'}} {struct_name}_t;\n'
 

@@ -81,6 +81,9 @@ def _get_file_prologue(proc_header_name: str) -> str:
         #include <{proc_header_name}>
         #include <stdint.h>
 
+        /* Vector table typedef */
+        typedef void(*VECTOR_TABLE_Type)(void);
+
         /* These are provided by the device linker script.
            These names are aliases defined by CMSIS for the linker symbols. */
         extern uint32_t __INITIAL_SP;
@@ -98,8 +101,8 @@ def _get_file_prologue(proc_header_name: str) -> str:
            _on_reset(). The _on_bootstrap() function is run just before main is called and so
            everything should be initialized.
            */
-        extern void __attribute__((weak, long_call)) _on_reset(void);
-        extern void __attribute__((weak, long_call)) _on_bootstrap(void);
+        extern void __attribute__((weak)) _on_reset(void);
+        extern void __attribute__((weak)) _on_bootstrap(void);
         '''
 
     return header + textwrap.dedent(decls)
@@ -140,6 +143,8 @@ def _get_default_handlers() -> str:
             while(1)
             {}
         }
+
+        void __attribute((noreturn, section(".reset"))) Reset_Handler(void);
         '''
 
     return textwrap.dedent(handlers)
@@ -173,7 +178,7 @@ def _get_vector_table(interrupts: list[DeviceInterrupt]) -> str:
     of the stack to be loaded into the stack pointer register.
     '''
     intr_decls: list[str] = []
-    intr_decls.append('    (void (*)(void))&__INITIAL_SP,   /*     Initial Stack Pointer */')
+    intr_decls.append('    (VECTOR_TABLE_Type)&__INITIAL_SP,   /*     Initial Stack Pointer */')
 
     current_index = interrupts[0].index
 
@@ -191,8 +196,8 @@ def _get_vector_table(interrupts: list[DeviceInterrupt]) -> str:
     # +1 for initial stack value.
     num_entries = current_index - interrupts[0].index + 1
 
-    vec_table_decl =  f'extern const void(*__VECTOR_TABLE[{num_entries}])(void);\n'
-    vec_table_decl += f'       const void(*__VECTOR_TABLE[{num_entries}])(void) '
+    vec_table_decl =  f'extern const VECTOR_TABLE_Type __VECTOR_TABLE[{num_entries}];\n'
+    vec_table_decl += f'       const VECTOR_TABLE_Type __VECTOR_TABLE[{num_entries}] '
     vec_table_decl +=  '__attribute__((used, retain, section(".vectors"))) = {\n'
     vec_table_decl += '\n'.join(intr_decls)
     vec_table_decl += '\n};'
@@ -232,7 +237,7 @@ def _get_startup_feature_functions() -> str:
         void __attribute__((weak, section(".reset"))) _EnableCmccCache(void)
         {
         #if defined(ID_CMCC)
-            CMCC_REGS->CTRL |= CMCC_CTRL_CEN_Msk;
+            CMCC_REGS->CMCC_CTRL |= CMCC_CTRL_CEN_Msk;
         #endif
         }
 
@@ -357,10 +362,11 @@ def _get_reset_handler() -> str:
                CPU on reset by reading the first entry in the vector table. */
             __set_PSP((uint32_t)(&__INITIAL_SP));
 
-            /* Initialize stack limit registers for Armv8-M Main devices. These do nothing for
-            older devices. */
+        #if (__ARM_ARCH >= 8)
+            /* Initialize stack limit registers for Armv8-M Main devices. */
             __set_MSPLIM((uint32_t)(&__STACK_LIMIT));
             __set_PSPLIM((uint32_t)(&__STACK_LIMIT));
+        #endif
 
             /* Add stack sealing for Armv8-M based processors. To use this, copy the default linker
                script for the target device. Update the __STACKSEAL_SIZE near the top and uncomment
@@ -378,10 +384,8 @@ def _get_reset_handler() -> str:
             _EnableCmccCache();
 
             /* Set the vector table base address, if supported by this device. */
-        #ifdef SCB_VTOR_TBLOFF_Msk
-            extern const void(*__VECTOR_TABLE[])(void);
-            uint32_t vtor_addr = (uint32_t)__VECTOR_TABLE;
-            SCB->VTOR = (vtor_addr & SCB_VTOR_TBLOFF_Msk);
+        #if defined (__VTOR_PRESENT) && (__VTOR_PRESENT == 1U)
+            SCB->VTOR = (uint32_t)(&__VECTOR_TABLE[0]);
         #endif
 
             _InitData();

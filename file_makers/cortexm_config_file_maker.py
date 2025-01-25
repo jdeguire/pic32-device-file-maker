@@ -112,7 +112,7 @@ def _get_common_options() -> str:
         --sysroot="<CFGDIR>/../cortex-m"
 
         # Specify system include directories
-        -isystem "<CFGDIR>/../cortex-m/CMSIS/Core/Include"
+        -isystem "<CFGDIR>/../CMSIS/Core/Include"
         -isystem "<CFGDIR>/../cortex-m/include"
 
         # Ensure we are using the linker and runtimes bundled with this toolchain. Clang can try to

@@ -57,7 +57,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: 
         outfile.write('/* ----- Device Property Macros ----- */\n')
     
         for prop_group in devinfo.property_groups:
-            outfile.write(_get_parameter_macros(prop_group.properties))
+            outfile.write(_get_device_property_macros(prop_group.properties))
 
         outfile.write('\n\n')
 
@@ -66,7 +66,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: 
     outfile.write('\n\n')
 
     outfile.write('/* ----- CMSIS Core and Peripherals Header ----- */\n')
-    outfile.write('#include <core_' + devinfo.cpu.split('-')[1].lower() + '.h>\n')
+    outfile.write('#include <core_c' + devinfo.cpu.split('-')[1].lower() + '.h>\n')
     outfile.write('\n\n')
 
     outfile.write('/* ----- Device Peripheral Headers ----- */\n')
@@ -158,6 +158,33 @@ def _get_parameter_macros(parameters: list[ParameterValue], prefix: str = '') ->
 
     for param in parameters:
         macro_name = prefix + param.name
+        macro_value = '(' + param.value + ')'
+
+        if param.caption:
+            macros += f'#define {macro_name :<32} {macro_value :<16} /* {param.caption} */\n'
+        else:
+            macros += f'#define {macro_name :<32} {macro_value}\n'
+
+    return macros
+
+
+def _get_device_property_macros(parameters: list[ParameterValue]) -> str:
+    '''Return a string containing C macros defining special properties about a device, such as its
+    JTAG ID value.
+
+    Device proprties need to be appending with something to avoid conflicting with other macros.
+    XC32 uses "CHIP_", so we will use that for compatibility.
+    '''
+    macros: str = ''
+
+    for param in parameters:
+        if param.name.startswith('CHIPID_'):
+            macro_name = 'CHIP_' + param.name[7:]
+        elif not param.name.startswith('CHIP_'):
+            macro_name = 'CHIP_' + param.name
+        else:
+            macro_name = param.name
+
         macro_value = '(' + param.value + ')'
 
         if param.caption:
