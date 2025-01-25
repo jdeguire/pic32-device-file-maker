@@ -81,7 +81,6 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     outfile.write('\n\n')
     outfile.write(_get_MEMORY_command(unique_addr_spaces, main_flash_region, main_ram_region,
                                       main_bootflash_region))
-    outfile.write('\n\n')
     outfile.write('ENTRY(Reset_Handler)')
     outfile.write('\n\n')
 
