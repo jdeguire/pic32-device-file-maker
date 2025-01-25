@@ -59,9 +59,16 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
 
     # Find our main memory regions for flash and RAM. For now, assume that boot flash regions
     # have "bfm" in the name.
-    main_flash_region = _find_biggest_internal_region(unique_addr_spaces, 'flash')
-    main_ram_region = _find_biggest_internal_region(unique_addr_spaces, 'ram')
-    main_bootflash_region = _find_biggest_internal_region(unique_addr_spaces, 'flash', 'bfm')
+    main_flash_region = _find_biggest_memory_region(unique_addr_spaces, 'flash', False)
+    main_ram_region = _find_biggest_memory_region(unique_addr_spaces, 'ram', False)
+    main_bootflash_region = _find_biggest_memory_region(unique_addr_spaces, 'flash', False, 'bfm')
+
+    if not main_flash_region:
+        # Some devices have only external flash, so check for that.
+        main_flash_region = _find_biggest_memory_region(unique_addr_spaces, 'flash', True)
+        if not main_flash_region:
+            # Some devices have no flash, so use RAM.
+            main_flash_region = _find_biggest_memory_region(unique_addr_spaces, 'ram', False)
 
     if not main_flash_region:
         raise RuntimeError(f'Failed to find a program flash region for {devinfo.name}')
@@ -139,21 +146,23 @@ def _remove_overlapping_memory(address_spaces: list[DeviceAddressSpace]) -> list
     return new_spaces
 
 
-def _find_biggest_internal_region(address_spaces: list[DeviceAddressSpace],
-                                  type: str,
-                                  partial_name: str = '') -> DeviceMemoryRegion | None:
-    '''Find and return the largest internal memory region of the given type (flash, ram, io, etc.).
+def _find_biggest_memory_region(address_spaces: list[DeviceAddressSpace],
+                                type: str,
+                                is_external: bool,
+                                partial_name: str = '') -> DeviceMemoryRegion | None:
+    '''Find and return the largest memory region of the given type (flash, ram, io, etc.).
 
-    Use the 'partial_name' parameter to further filter regions to only ones containing the given
-    string in their name. This match is not case sensitive. This will return a copy of the region
-    with the starting address of the containing address space added to the found region. This will
-    return None if a region of the given type cannot be found.
+    Set 'is_external' to False to skip over regions marked as external or True to look only for
+    external regions. Use the 'partial_name' parameter to further filter regions to only ones
+    containing the given string in their name. This match is not case sensitive. This will return
+    a copy of the region with the starting address of the containing address space added to the
+    found region. This will return None if a region of the given type cannot be found.
     '''
     biggest: DeviceMemoryRegion | None = None
 
     for addr_space in address_spaces:
         for region in addr_space.mem_regions:
-            if region.external  or  type != region.type.lower():
+            if region.external != is_external  or  type != region.type.lower():
                 continue
 
             if partial_name  and  partial_name.lower() not in region.name.lower():
