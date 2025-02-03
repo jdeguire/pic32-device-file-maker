@@ -78,8 +78,12 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: 
     outfile.write('\n\n')
 
     outfile.write('/* ----- Device Peripheral Instance Parameters ----- */\n')
+    fuses_peripheral: PeripheralGroup | None = None
     for periph in devinfo.peripherals:
         if _peripheral_is_special(periph):
+            # Fuses need special handling--done below--so track it here.
+            if 'fuses' == periph.name.lower():
+                fuses_peripheral = periph
             continue
 
         for instance in periph.instances:
@@ -89,13 +93,11 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: 
 
     # Fuses need special handling from other peripherals. This assumes there is at most one fuse
     # peripheral called FUSES, though that peripheral can have multiple groups.
-    for fp in devinfo.peripherals:
-        if 'fuses' == fp.name.lower():
-            outfile.write('/* ----- Device Configuration Fuses ----- */\n')
-            outfile.write(f'#include "{fuse_prefix}/{devinfo.name.lower()}.h"\n\n')
-            outfile.write(_get_device_fuse_declarations(fp, devinfo.address_spaces))
-            outfile.write('\n\n')
-            break
+    if fuses_peripheral:
+        outfile.write('/* ----- Device Configuration Fuses ----- */\n')
+        outfile.write(f'#include "{fuse_prefix}/{devinfo.name.lower()}.h"\n\n')
+        outfile.write(_get_device_fuse_declarations(fuses_peripheral, devinfo.address_spaces))
+        outfile.write('\n\n')
 
     outfile.write(_get_file_epilogue(devinfo.name))
 
@@ -142,7 +144,7 @@ def _get_interrupt_enum(interrupts: list[DeviceInterrupt]) -> str:
         name = interrupt.name + '_IRQn'
         index = interrupt.index
         caption = interrupt.caption
-        enum_str += f'    {name :<24} = {index :>3}, /* {caption} */\n'
+        enum_str += f'    {name:<24} = {index :>3}, /* {caption} */\n'
 
     enum_str += '} IRQn_Type;\n'
 
@@ -161,9 +163,9 @@ def _get_parameter_macros(parameters: list[ParameterValue], prefix: str = '') ->
         macro_value = '(' + param.value + ')'
 
         if param.caption:
-            macros += f'#define {macro_name :<32} {macro_value :<16} /* {param.caption} */\n'
+            macros += f'#define {macro_name:<32} {macro_value:<16} /* {param.caption} */\n'
         else:
-            macros += f'#define {macro_name :<32} {macro_value}\n'
+            macros += f'#define {macro_name:<32} {macro_value}\n'
 
     return macros
 
@@ -188,9 +190,9 @@ def _get_device_property_macros(parameters: list[ParameterValue]) -> str:
         macro_value = '(' + param.value + ')'
 
         if param.caption:
-            macros += f'#define {macro_name :<32} {macro_value :<16} /* {param.caption} */\n'
+            macros += f'#define {macro_name:<32} {macro_value:<16} /* {param.caption} */\n'
         else:
-            macros += f'#define {macro_name :<32} {macro_value}\n'
+            macros += f'#define {macro_name:<32} {macro_value}\n'
 
     return macros
 
@@ -205,15 +207,15 @@ def _get_memory_region_macros(address_spaces: list[DeviceAddressSpace]) -> str:
         for mem_region in addr_space.mem_regions:
             base = addr_space.start_addr + mem_region.start_addr
             base_macro_name = mem_region.name.upper() + '_BASE'
-            region_str += f'#define {base_macro_name :<32} (0x{base :08X}ul)\n'
+            region_str += f'#define {base_macro_name:<32} (0x{base:08X}ul)\n'
 
             size = mem_region.size
             size_macro_name = mem_region.name.upper() + '_SIZE'
-            region_str += f'#define {size_macro_name :<32} (0x{size :08X}ul)\n'
+            region_str += f'#define {size_macro_name:<32} (0x{size:08X}ul)\n'
 
             page_size = mem_region.page_size
             pagesize_macro_name = mem_region.name.upper() + '_PAGESIZE'
-            region_str += f'#define {pagesize_macro_name :<32} ({page_size}ul)\n\n'
+            region_str += f'#define {pagesize_macro_name:<32} ({page_size}ul)\n\n'
 
     return region_str
 
@@ -259,8 +261,8 @@ def _get_peripheral_address_macros(peripherals: list[PeripheralGroup],
                 macro_addr = (group_ref.offset + 
                               _find_start_of_address_space(address_spaces, group_ref.addr_space))
 
-                base_macros += f'#define {base_macro_name :<32} (0x{macro_addr :08X}ul)\n'
-                decl_macros += f'#define {decl_macro_name :<32} ((volatile {macro_type}*){base_macro_name})\n'
+                base_macros += f'#define {base_macro_name:<32} (0x{macro_addr:08X}ul)\n'
+                decl_macros += f'#define {decl_macro_name:<32} ((volatile {macro_type}*){base_macro_name})\n'
 
     return (base_macros + 
             '\n#ifndef __ASSEMBLER__\n' +
@@ -278,28 +280,61 @@ def _get_device_fuse_declarations(fuse_periph: PeripheralGroup,
     so they can be programmed onto the device. The linker script for this device will need to have
     output sections for these.
     '''
-    base_str: str = ''
     decl_str: str = ''
+    addr_macro_str: str = ''
+    set_macro_str: str = ''
 
     for instance in fuse_periph.instances:
         for group_ref in instance.reg_group_refs:
-            type_name = 'cfg_' + group_ref.module_name.lower() + '_t'
-            section_name = '.' + group_ref.instance_name.lower()
-            variable_name = 'CFG_' + group_ref.instance_name.upper()
+            # Find the matching register group for this reference.
+            reg_group: RegisterGroup | None = None
+            for group in fuse_periph.reg_groups:
+                if group.name == group_ref.module_name:
+                    reg_group = group
+                    break
 
-            base_macro_name = variable_name + '_BASE'
-            base_addr = (group_ref.offset + 
-                        _find_start_of_address_space(addr_spaces, group_ref.addr_space))
-            base_str += f'#define {base_macro_name :<32} (0x{base_addr :08X}ul)\n'
+            if not reg_group:
+                continue
 
-            decl_str += f'extern const {type_name} '
-            decl_str += f'__attribute__((used, retain, section("{section_name}"))) '
-            decl_str += variable_name + ';\n'
+            base_addr = (_find_start_of_address_space(addr_spaces, group_ref.addr_space)
+                         + group_ref.offset)
 
-    return (base_str + 
+            for member in reg_group.members:
+                # There are multiple of some registers, so make declarations for each one.
+                if member.count > 0:
+                    for i in range(member.count):
+                        reg_addr = base_addr + member.offset + (4*i)
+                        base_name = group_ref.instance_name + '_' + member.name
+                        section_name = '.' + base_name.lower() + str(i)
+                        variable_name = 'CFG_' + base_name.upper() + str(i)
+
+                        addr_macro_str += f'#define {variable_name + '_BASE':<32} (0x{reg_addr:08X}ul)\n'
+
+                        decl_str += f'extern const uint32_t __attribute__((used, retain, section("{section_name}"))) '
+                        decl_str += variable_name + ';\n'
+
+                        set_macro_str += f'#define SET_{variable_name + '_VALUE(val)':<32} \\\n'
+                        set_macro_str += f'            const uint32_t {variable_name} = '
+                        set_macro_str += f'(~FUSES_{member.name.upper()}_MASK | (val))\n'
+                else:
+                    reg_addr = base_addr + member.offset
+                    base_name = group_ref.instance_name + '_' + member.name
+                    section_name = '.' + base_name.lower()
+                    variable_name = 'CFG_' + base_name.upper()
+
+                    addr_macro_str += f'#define {variable_name + '_BASE':<32} (0x{reg_addr:08X}ul)\n'
+
+                    decl_str += f'extern const uint32_t __attribute__((used, retain, section("{section_name}"))) '
+                    decl_str += variable_name + ';\n'
+
+                    set_macro_str += f'#define SET_{variable_name + '_VALUE(val)':<32} \\\n'
+                    set_macro_str += f'            const uint32_t {variable_name} = '
+                    set_macro_str += f'(~FUSES_{member.name.upper()}_MASK | (val))\n'
+
+    return (addr_macro_str +
             '\n#ifndef __ASSEMBLER__\n' +
-            decl_str +
-            '#endif /* ifndef __ASSEMBLER__ */\n')
+            decl_str + '\n' + set_macro_str +
+            '\n#endif /* ifndef __ASSEMBLER__ */\n')
 
 
 def _get_file_epilogue(devname: str) -> str:

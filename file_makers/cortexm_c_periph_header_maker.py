@@ -57,14 +57,16 @@ def run(basename: str, peripheral: PeripheralGroup, outfile: IO[str]) -> None:
                 outfile.write(_get_register_macros(peripheral.name, member))
                 outfile.write('\n')
 
-    outfile.write('\n\n#ifndef __ASSEMBLER__\n\n')
+    # Fuses are special in that we refer to them individually instead of as part of a struct. This
+    # ensures that uninitialized fuses are left at their default of all 1s.
+    if 'fuses' not in peripheral.name.lower():
+        outfile.write('\n\n#ifndef __ASSEMBLER__\n\n')
+        outfile.write('/* ----- Register Group Definitions ----- */\n')
+        for reg_group in peripheral.reg_groups:
+            outfile.write(_get_register_group_definition(peripheral.name, reg_group))
+            outfile.write('\n')
 
-    outfile.write('/* ----- Register Group Definitions ----- */\n')
-    for reg_group in peripheral.reg_groups:
-        outfile.write(_get_register_group_definition(peripheral.name, reg_group))
-        outfile.write('\n')
-
-    outfile.write('#endif /* ifndef __ASSEMBLER__ */\n\n')
+        outfile.write('#endif /* ifndef __ASSEMBLER__ */\n\n')
 
     outfile.write(_get_file_epilogue(basename))
 
@@ -98,8 +100,6 @@ def _get_register_macros(periph_name: str, reg: RegisterGroupMember) -> str:
     '''Return a string containing macros defining the given register and its bitfields assuming it
     is a register and not a reference to another register group.
     '''
-    macros: str = ''
-
     # Some registers on some devices (SAME70) repeat the peripheral name in them. Strip it off so
     # we don't duplicate it later.
     if reg.name.startswith(periph_name + '_'):
@@ -127,40 +127,48 @@ def _get_register_macros(periph_name: str, reg: RegisterGroupMember) -> str:
     # Value macro name format:  BaseName_FieldName_ValueName_foo
 
     # A comment with the register name and an optional caption.
-    macros += f'// {macro_base_name}'
+    reg_macros: str = f'// {macro_base_name}'
     if reg.caption:
-        macros += ': ' + reg.caption
-    macros += '\n'
+        reg_macros += ': ' + reg.caption
+    reg_macros += '\n'
 
     # A macro with the initial value upon reset.
-    macros += _get_basic_macro(f'{macro_base_name}_RESETVAL' , f'0x{reg.init_val :08X}ul')
+    reg_macros += _get_basic_macro(f'{macro_base_name}_RESETVAL' , f'0x{reg.init_val:08X}ul')
 
     # A macro giving the offset. If this is an array of registers, create another macro to let you
     # get the offset into the array.
-    macros += _get_basic_macro(f'{macro_base_name}_OFFSET', f'0x{reg.offset :02X}ul')
+    reg_macros += _get_basic_macro(f'{macro_base_name}_OFFSET', f'0x{reg.offset:02X}ul')
     if reg.count:
-        macros += _get_basic_macro(f'{macro_base_name}_OFFSETn(off)',
+        reg_macros += _get_basic_macro(f'{macro_base_name}_OFFSETn(off)',
                                    f'{macro_base_name}_OFFSET + ({reg.size}ul * off)')
-    macros += '\n'
 
     # Get the 'Field_Msk', 'Field_Pos', and 'Field(v)' macros that every field has. Fields that
     # apply only in certain register modes will need a set for each mode.
     # If a field also has specific values associated with it, then get those too.
+    field_macros: str = ''
+    reg_mask = 0
     for field in reg.fields:
         if field.modes:
             for fmode in field.modes:
                 field_macro_name = f'{macro_base_name}_{fmode}_{field.name}'
-                macros += _get_bitfield_macros(field_macro_name, field.mask, field.caption)
+                field_macros += _get_bitfield_macros(field_macro_name, field.mask, field.caption)
+                reg_mask |= field.mask
         else:
             field_macro_name = f'{macro_base_name}_{field.name}'
-            macros += _get_bitfield_macros(field_macro_name, field.mask, field.caption)
+            field_macros += _get_bitfield_macros(field_macro_name, field.mask, field.caption)
+            reg_mask |= field.mask
 
         if field.values:
             value_macro_base = f'{macro_base_name}_{field.name}'
-            macros += _get_bitfield_value_macros(value_macro_base, field.values)
+            field_macros += _get_bitfield_value_macros(value_macro_base, field.values)
 
 
-    return macros
+    # A macro giving a mask of used bits for the whole register. This is made up of the masks of
+    # all of the fields.
+    reg_macros += _get_basic_macro(f'{macro_base_name}_MASK' , f'0x{reg_mask:08X}ul')
+    reg_macros += '\n'
+
+    return reg_macros + field_macros
 
 
 def _get_register_group_definition(periph_name: str, group: RegisterGroup) -> str:
@@ -180,7 +188,7 @@ def _get_register_group_definition(periph_name: str, group: RegisterGroup) -> st
 
         for mode in group.modes:
             mode_type_name = _get_base_groupdef_name(periph_name, group.name, mode) + '_t'
-            group_def += f'    {mode_type_name :<24} {mode};\n'
+            group_def += f'    {mode_type_name:<24} {mode};\n'
         
         group_def += f'}} {union_name}_t;\n'
     else:
@@ -219,7 +227,7 @@ def _get_bitfield_macros(field_macro_name: str, mask: int, caption: str) -> str:
     # "python ctz": https://stackoverflow.com/a/63552117.
     pos = (mask & -mask).bit_length() - 1
 
-    macros += _get_basic_macro(msk_macro_name, f'0x{mask :08X}ul', caption)
+    macros += _get_basic_macro(msk_macro_name, f'0x{mask:08X}ul', caption)
     macros += _get_basic_macro(pos_macro_name, f'{pos}ul')
     macros += _get_basic_macro(f'{field_macro_name}(v)',
                                f'{msk_macro_name} & ((uint32_t)(v) << {pos_macro_name})')
@@ -253,9 +261,9 @@ def _get_basic_macro(macro_name: str, macro_value: str, macro_caption: str = '')
 
     if macro_caption:
         val_str = f'({macro_value})'
-        macro += f'#define {macro_name :<48} {val_str :<16} /* {macro_caption} */\n'
+        macro += f'#define {macro_name:<48} {val_str:<16} /* {macro_caption} */\n'
     else:
-        macro += f'#define {macro_name :<48} ({macro_value})\n'
+        macro += f'#define {macro_name:<48} ({macro_value})\n'
 
     return macro
 
@@ -292,23 +300,25 @@ def _get_register_struct(periph_name: str, group: RegisterGroup, mode: str = '')
             reg_struct += f'    uint8_t                  unused_0x{current_offset:02X}[{pad}];\n'
             current_offset = member.offset
 
-        # Get the type name.
+        # Some registers on some devices (SAME70) repeat the peripheral name in them. Strip it off so
+        # we don't duplicate it later.
+        if member.name.startswith(periph_name + '_'):
+            mem_name = member.name[len(periph_name)+1:]
+        elif member.name.startswith(periph_name):
+            mem_name = member.name[len(periph_name):]
+        else:
+            mem_name = member.name
+
+        # Get the type and member name based on whether this is a register or subgroup.
+        # Registers repeat the peripheral name. This redundant, but needed to avoid conlicting with
+        # macros. The group name does not need this.
         if member.is_subgroup:
             subgroup_type = _get_base_groupdef_name(periph_name, member.module_name) + '_t'
         else:
             subgroup_type = _get_reg_type_from_size(member.size)
+            mem_name = periph_name + '_' + member.name
 
-        # Put the peripheral name in front of the register name. This is redundant, but is
-        # unfortunately needed to avoid potentially conflicting with other macros.
-        if not member.name.startswith(periph_name + '_'):
-            if member.name.startswith(periph_name):
-                mem_name = periph_name + '_' + member.name[len(periph_name):]
-            else:
-                mem_name = periph_name + '_' + member.name
-        else:
-            mem_name = member.name
-
-        reg_struct += f'    {subgroup_type :<24} {mem_name}'
+        reg_struct += f'    {subgroup_type:<24} {mem_name}'
 
         # Is this an array?
         if member.count:

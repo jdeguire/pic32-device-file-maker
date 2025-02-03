@@ -166,7 +166,7 @@ def _get_handler_declarations(interrupts: list[DeviceInterrupt]) -> str:
             continue
 
         func_str = f'{intr.name}_Handler'
-        decl_str += f'void {func_str :<32}(void) __attribute__((weak, alias("Default_Handler")));\n'
+        decl_str += f'void {func_str:<32}(void) __attribute__((weak, alias("Default_Handler")));\n'
 
     return decl_str
 
@@ -189,7 +189,7 @@ def _get_vector_table(interrupts: list[DeviceInterrupt]) -> str:
             current_index += 1
         
         entry = f'{intr.name}_Handler,'
-        intr_decls.append(f'    {entry :<32} /* {intr.index :3} {intr.caption} */')
+        intr_decls.append(f'    {entry:<32} /* {intr.index :3} {intr.caption} */')
 
         current_index += 1
 
