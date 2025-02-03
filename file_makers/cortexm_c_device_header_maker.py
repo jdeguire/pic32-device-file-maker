@@ -282,7 +282,6 @@ def _get_device_fuse_declarations(fuse_periph: PeripheralGroup,
     '''
     decl_str: str = ''
     addr_macro_str: str = ''
-    set_macro_str: str = ''
 
     for instance in fuse_periph.instances:
         for group_ref in instance.reg_group_refs:
@@ -312,10 +311,6 @@ def _get_device_fuse_declarations(fuse_periph: PeripheralGroup,
 
                         decl_str += f'extern const uint32_t __attribute__((used, retain, section("{section_name}"))) '
                         decl_str += variable_name + ';\n'
-
-                        set_macro_str += f'#define SET_{variable_name + '_VALUE(val)':<32} \\\n'
-                        set_macro_str += f'            const uint32_t {variable_name} = '
-                        set_macro_str += f'(~FUSES_{member.name.upper()}_MASK | (val))\n'
                 else:
                     reg_addr = base_addr + member.offset
                     base_name = group_ref.instance_name + '_' + member.name
@@ -327,13 +322,9 @@ def _get_device_fuse_declarations(fuse_periph: PeripheralGroup,
                     decl_str += f'extern const uint32_t __attribute__((used, retain, section("{section_name}"))) '
                     decl_str += variable_name + ';\n'
 
-                    set_macro_str += f'#define SET_{variable_name + '_VALUE(val)':<32} \\\n'
-                    set_macro_str += f'            const uint32_t {variable_name} = '
-                    set_macro_str += f'(~FUSES_{member.name.upper()}_MASK | (val))\n'
-
     return (addr_macro_str +
             '\n#ifndef __ASSEMBLER__\n' +
-            decl_str + '\n' + set_macro_str +
+            decl_str +
             '\n#endif /* ifndef __ASSEMBLER__ */\n')
 
 

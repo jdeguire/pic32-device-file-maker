@@ -76,25 +76,35 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
         raise RuntimeError(f'Failed to find a RAM region for {devinfo.name}')
     # Do not check for bootflash region because not all devices have boot flash.
 
-    # Now we can output the actual linker script bits.
-    outfile.write(_get_memory_symbols(main_flash_region, main_ram_region))
-    outfile.write('\n\n')
-    outfile.write(_get_MEMORY_command(unique_addr_spaces, main_flash_region, main_ram_region,
-                                      main_bootflash_region))
-    outfile.write('ENTRY(Reset_Handler)')
-    outfile.write('\n\n')
-
-    outfile.write('SECTIONS\n{\n')
-    outfile.write(_get_standard_SECTIONS(main_flash_region, main_ram_region, main_bootflash_region))
-
+    # Look for a fuses peripheral.
     # Fuses are special because unlike other peripherals with their fixed locations, fuses
     # need to be programmed into the flash at the correct spot. We need to create linker sections
     # for them to go. This assumes a device has at most one fuses peripheral called FUSES.
+    fuses_periph: PeripheralGroup | None = None
     for periph in devinfo.peripherals:
         if 'fuses' == periph.name.lower():
-            outfile.write('\n  /* Device configuration fuses */')
-            outfile.write(_get_fuse_SECTIONS(unique_addr_spaces, periph))
+            fuses_periph = periph
             break
+
+    # Now we can output the actual linker script bits.
+    #
+
+    # MEMORY command
+    outfile.write(_get_memory_symbols(main_flash_region, main_ram_region))
+    outfile.write('\n\nMEMORY\n{\n')
+    outfile.write(_get_MEMORY_regions(unique_addr_spaces, main_flash_region, main_ram_region,
+                                      main_bootflash_region))
+    if fuses_periph:
+        outfile.write(_get_fuse_MEMORY(unique_addr_spaces, fuses_periph))
+    outfile.write('}\n\nENTRY(Reset_Handler)')
+    outfile.write('\n\n')
+
+    # SECTIONS command
+    outfile.write('SECTIONS\n{\n')
+    outfile.write(_get_standard_SECTIONS(main_flash_region, main_ram_region, main_bootflash_region))
+    if fuses_periph:
+        outfile.write('\n  /* Device configuration fuses */')
+        outfile.write(_get_fuse_SECTIONS(unique_addr_spaces, periph))
 
     outfile.write('\n}\n')
 
@@ -207,13 +217,13 @@ def _get_memory_symbols(main_flash_region: DeviceMemoryRegion,
     return textwrap.dedent(symbol_str)
 
 
-def _get_MEMORY_command(address_spaces: list[DeviceAddressSpace],
+def _get_MEMORY_regions(address_spaces: list[DeviceAddressSpace],
                         main_flash_region: DeviceMemoryRegion,
                         main_ram_region: DeviceMemoryRegion,
                         main_bootflash_region: DeviceMemoryRegion | None) -> str:
-    '''Return the MEMORY command for GNU linker scripts that lists the memory regions in the device.
+    '''Return the memory regions on the device formatted for the MEMORY linker script command.
     '''
-    memory_cmd: str = 'MEMORY\n{\n'
+    memory_cmd: str = ''
 
     for addr_space in address_spaces:
         for region in addr_space.mem_regions:
@@ -224,15 +234,50 @@ def _get_MEMORY_command(address_spaces: list[DeviceAddressSpace],
             # We need to add some region attributes to the main flash and RAM sections. Unfortunately,
             # the device info we can get from the ATDF files is not totally helpful here.
             if name == main_flash_region.name.lower():
-                memory_cmd += f'  {name:<17} (rx)  : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
+                memory_cmd += f'  {name:<34} (rx)  : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
             elif main_bootflash_region  and  name == main_bootflash_region.name.lower():
-                memory_cmd += f'  {name:<17} (rx)  : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
+                memory_cmd += f'  {name:<34} (rx)  : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
             elif name == main_ram_region.name.lower():
-                memory_cmd += f'  {name:<17} (rwx) : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
+                memory_cmd += f'  {name:<34} (rwx) : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
             else:
-                memory_cmd += f'  {name:<23} : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
+                memory_cmd += f'  {name:<40} : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
 
-    memory_cmd += '}\n\n'
+    return memory_cmd
+
+
+def _get_fuse_MEMORY(addr_spaces: list[DeviceAddressSpace],
+                     fuses_periph: PeripheralGroup) -> str:
+    '''Return the device fuse locations formatted for the MEMORY linker script command.
+    '''
+    memory_cmd: str = ''
+
+    for inst in fuses_periph.instances:
+        for ref in inst.reg_group_refs:
+            # Find the matching register group for this reference.
+            reg_group: RegisterGroup | None = None
+            for group in fuses_periph.reg_groups:
+                if group.name == ref.module_name:
+                    reg_group = group
+                    break
+
+            if not reg_group:
+                continue
+
+            base_addr = ref.offset + _find_start_of_address_space(addr_spaces, ref.addr_space)
+
+            for member in reg_group.members:
+                # There are multiple of some registers, so make sections for each one.
+                if member.count > 0:
+                    for i in range(member.count):
+                        fuse_addr = base_addr + member.offset + (4*i)
+                        region_name = ref.instance_name.lower() + '_' + member.name.lower() + str(i)
+
+                        memory_cmd += f'  {region_name:<40} : ORIGIN = 0x{fuse_addr:08X}, LENGTH = 0x04\n'
+                else:
+                    fuse_addr = base_addr + member.offset
+                    region_name = ref.instance_name.lower() + '_' + member.name.lower()
+
+                    memory_cmd += f'  {region_name:<40} : ORIGIN = 0x{fuse_addr:08X}, LENGTH = 0x04\n'
 
     return memory_cmd
 
@@ -485,24 +530,19 @@ def _get_fuse_SECTIONS(addr_spaces: list[DeviceAddressSpace], fuses: PeripheralG
             if not reg_group:
                 continue
 
-            base_addr = ref.offset + _find_start_of_address_space(addr_spaces, ref.addr_space)
-            section_name = '.' + ref.instance_name.lower()
-
             for member in reg_group.members:
                 # There are multiple of some registers, so make sections for each one.
                 if member.count > 0:
                     for i in range(member.count):
-                        fuse_addr = base_addr + member.offset + (4*i)
-                        section_name = '.' + ref.instance_name.lower() + '_' + member.name.lower() + str(i)
+                        region_name = ref.instance_name.lower() + '_' + member.name.lower() + str(i)
+                        section_name = '.' + region_name
 
-                        fuse_str += f'\n{section_name} 0x{fuse_addr:08X} : '
-                        fuse_str += f'{{ KEEP(*({section_name})) }}'
+                        fuse_str += f'\n{section_name:<40} : {{ KEEP(*({section_name})) }} > {region_name}'
                 else:
-                    fuse_addr = base_addr + member.offset
-                    section_name = '.' + ref.instance_name.lower() + '_' + member.name.lower()
+                    region_name = ref.instance_name.lower() + '_' + member.name.lower()
+                    section_name = '.' + region_name
 
-                    fuse_str += f'\n{section_name} 0x{fuse_addr:08X} : '
-                    fuse_str += f'{{ KEEP(*({section_name})) }}'
+                    fuse_str += f'\n{section_name:<40} : {{ KEEP(*({section_name})) }} > {region_name}'
 
     return textwrap.indent(fuse_str, '  ')
 
