@@ -85,8 +85,9 @@ def _get_file_prologue(filename: str) -> str:
     prologue += ' */\n\n'
 
     # Include guard
-    prologue += f'#ifndef {filename.upper()}_H_\n'
-    prologue += f'#define {filename.upper()}_H_\n\n'
+    guard_name = filename.upper().replace('.', '_')
+    prologue += f'#ifndef {guard_name}_H_\n'
+    prologue += f'#define {guard_name}_H_\n\n'
 
     # extern "C"
     prologue += '#ifdef __cplusplus\n'
@@ -209,7 +210,8 @@ def _get_file_epilogue(filename: str) -> str:
     epilogue += '#endif\n\n'
 
     # Include guard
-    epilogue += f'#endif /* {filename.upper()}_H_ */\n'
+    guard_name = filename.upper().replace('.', '_')
+    epilogue += f'#endif /* {guard_name}_H_ */\n'
 
     return epilogue
 
@@ -288,17 +290,33 @@ def _get_register_struct(periph_name: str, group: RegisterGroup, mode: str = '')
     current_offset: int = 0
 
     sorted_members = sorted(group.members, key=operator.attrgetter('offset'))
+    member_str: str = ''
+    is_union: bool = False
 
     for member in sorted_members:
         # If we were given a mode, then ouptut only registers that have the same mode or no mode. 
         if mode  and  member.mode  and  mode != member.mode:
             continue
 
-        # Do we need to add some padding for unused space?
-        if current_offset != member.offset:
-            pad = member.offset - current_offset
-            reg_struct += f'    uint8_t                  unused_0x{current_offset:02X}[{pad}];\n'
+        if current_offset > member.offset:
+            # Adjacent registers probably have the same offset. This is rare, but can happen.
+            # They need to be put together in a union.
+            is_union = True
             current_offset = member.offset
+        else:
+            if is_union:
+                is_union = False
+                reg_struct += '    union\n    {\n    ' + member_str + '    };\n'
+            else:
+                reg_struct += member_str
+
+            member_str = ''
+
+            if current_offset < member.offset:
+                # Add some padding for unused space.
+                pad = member.offset - current_offset
+                reg_struct += f'    uint8_t                  unused_0x{current_offset:02X}[{pad}];\n'
+                current_offset = member.offset
 
         # Some registers on some devices (SAME70) repeat the peripheral name in them. Strip it off so
         # we don't duplicate it later.
@@ -309,6 +327,8 @@ def _get_register_struct(periph_name: str, group: RegisterGroup, mode: str = '')
         else:
             mem_name = member.name
 
+        # TODO: Maybe remove this repeated name and just add special cases when needed. Right now,
+        #       the only special case is for "SAU" on Ethernet.
         # Get the type and member name based on whether this is a register or subgroup.
         # Registers repeat the peripheral name. This redundant, but needed to avoid conlicting with
         # macros. The group name does not need this.
@@ -318,16 +338,25 @@ def _get_register_struct(periph_name: str, group: RegisterGroup, mode: str = '')
             subgroup_type = _get_reg_type_from_size(member.size)
             mem_name = periph_name + '_' + member.name
 
-        reg_struct += f'    {subgroup_type:<24} {mem_name}'
+        if is_union:
+            member_str += '    '
+        member_str += f'    {subgroup_type:<24} {mem_name}'
 
         # Is this an array?
         if member.count:
-            reg_struct += f'[{member.count}]'
+            member_str += f'[{member.count}]'
             current_offset += (member.size * member.count)
         else:
             current_offset += member.size
 
-        reg_struct += ';\n'
+        member_str += ';\n'
+
+    # Ensure the last memeber is added.
+    if is_union:
+        is_union = False
+        reg_struct += '    union\n    {\n    ' + member_str + '    };\n'
+    else:
+        reg_struct += member_str
 
     # Do we need to add padding to the end of the struct/union?
     if current_offset < group.size:

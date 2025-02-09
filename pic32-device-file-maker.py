@@ -286,7 +286,13 @@ if '__main__' == __name__:
                     basename = devinfo.name.lower() + '_fuses'
                     cortexm_c_periph_header_maker.run(basename, periph, hdr)
             elif periph.id  and  'system_ip' not in periph.id.lower():
-                full_name = periph.name.lower() + '_' + periph.id.lower()
+                name = periph.name.lower()
+                id = periph.id.lower()
+                ver = periph.version.lower()
+                if ver:
+                    full_name = f'{name}_{id}_{ver}'
+                else:
+                    full_name = f'{name}_{id}'
 
                 if full_name not in peripherals_to_make:
                     peripherals_to_make[full_name] = periph
