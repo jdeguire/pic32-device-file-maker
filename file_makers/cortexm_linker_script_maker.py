@@ -476,10 +476,12 @@ def _get_standard_SECTIONS(main_flash_region: DeviceMemoryRegion,
         {{
           . = ALIGN(8);
           __end__ = .;
+          _end = .;     /* This is referenced by LLVM-libc for heap allocation. */
           PROVIDE(end = .);
           . = . + __HEAP_SIZE;
           . = ALIGN(8);
           __HeapLimit = .;
+          __llvm_libc_heap_limit = .;
         }} > {ram_name}
 
         .stack (ORIGIN({ram_name}) + LENGTH({ram_name}) - __STACK_SIZE - __STACKSEAL_SIZE) (NOLOAD) :

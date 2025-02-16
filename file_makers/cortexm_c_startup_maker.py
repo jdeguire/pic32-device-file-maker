@@ -59,6 +59,7 @@ def run(proc_header_name: str, interrupts: list[DeviceInterrupt], outfile: IO[st
 
     outfile.write(_get_startup_feature_functions())
     outfile.write(_get_data_init_functions())
+    outfile.write(_get_llvm_libc_functions())
     outfile.write(_get_reset_handler())
 
     # This file does not have an epilogue.
@@ -92,7 +93,7 @@ def _get_file_prologue(proc_header_name: str) -> str:
         extern uint32_t __STACK_SEAL;
         #endif
 
-        extern void _init(void);         // Defined in Musl library at must/crt/arm/crti.s.
+        extern void __libc_init_array(void);    // Defined in libc at llvm/libc/startup/baremetal/init.cpp
         extern int main(void);
         extern void exit(int status);
 
@@ -214,7 +215,7 @@ def _get_startup_feature_functions() -> str:
            M-Profile Vector Extensions because that uses the 16 double-precision FPU registers as 8
            128-bit vector registers.
            */
-        void __attribute__((weak, section(".reset"))) _EnableFpu(void)
+        void __attribute__((weak, section(".reset.startup"))) _EnableFpu(void)
         {
         #if (defined(__ARM_FP) && (0 != __ARM_FP))  ||  (defined(__ARM_FEATURE_MVE) && (__ARM_FEATURE_MVE > 0))
             SCB->CPACR |= 0x00F00000;
@@ -234,7 +235,7 @@ def _get_startup_feature_functions() -> str:
         /* Enable the Cortex-M Cache Controller with default values. This is used to supplement
            Cortex-M devices that do not have a CPU cache.
            */
-        void __attribute__((weak, section(".reset"))) _EnableCmccCache(void)
+        void __attribute__((weak, section(".reset.startup"))) _EnableCmccCache(void)
         {
         #if defined(ID_CMCC)
             CMCC_REGS->CMCC_CTRL |= CMCC_CTRL_CEN_Msk;
@@ -244,7 +245,7 @@ def _get_startup_feature_functions() -> str:
         /* Enable the Cortex-M CPU instruction and data caches. This applies to CPUs with built-in
            caches.
            */
-        void __attribute__((weak, section(".reset"))) _EnableCpuCache(void)
+        void __attribute__((weak, section(".reset.startup"))) _EnableCpuCache(void)
         {
             // These invalidate the caches before enabling them.
         #if __ICACHE_PRESENT == 1
@@ -257,7 +258,7 @@ def _get_startup_feature_functions() -> str:
 
         /* Enable branch prediction and the Low Overhead Branch extension if either are present.
            */
-        void __attribute__((weak, section(".reset"))) _EnableBranchCaches(void)
+        void __attribute__((weak, section(".reset.startup"))) _EnableBranchCaches(void)
         {
         #if defined(SCB_CCR_LOB_Msk)
             /* Enable Loop and branch info cache */
@@ -284,7 +285,7 @@ def _get_data_init_functions() -> str:
         /* Initialize data found in the .data and .bss sections. This is based on the 
            __cmsis_start() function found in "CMSIS/Core/Include/m-profile/cmsis_gcc_m.h".
            */
-        void __attribute__((weak, section(".reset"))) _InitData(void)
+        void __attribute__((weak, section(".reset.startup"))) _InitData(void)
         {
             typedef struct __copy_table {
                 uint32_t const* src;
@@ -317,37 +318,50 @@ def _get_data_init_functions() -> str:
                     pTable->dest[i] = 0u;
             }
         }
-
-        /* Call compiler-generated initialization routines for C and C++.
-           */
-        void __attribute__((weak, section(".reset"))) _LibcInitArray(void)
-        {
-            // These are defined in the linker script.
-            extern void (*__preinit_array_start)(void);
-            extern void (*__preinit_array_end)(void);
-            extern void (*__init_array_start)(void);
-            extern void (*__init_array_end)(void);
-
-            void (**preinit_ptr)(void) = &__preinit_array_start;
-            while(preinit_ptr < &__preinit_array_end)
-            {
-                (*preinit_ptr)();
-                ++preinit_ptr;
-            }
-
-            _init();
-
-            void (**init_ptr)(void) = &__init_array_start;
-            while(init_ptr < &__init_array_end)
-            {
-                (*init_ptr)();
-                ++init_ptr;
-            }
-        }
         '''
 
     return textwrap.dedent(funcs)
 
+
+def _get_llvm_libc_functions() -> str:
+    '''Return a string containing functions that need to be defined because they are referenced
+    by LLVM-libc.
+    '''
+    funcs: str = '''
+        /* These next two functions are called by LLVM-libc's exit() function. The first would
+           normally run global and static local C++ object destructors and any functions registered
+           with atexit(). The second would do any extra cleanup work needed by an application at
+           exit. 
+           
+           A baremetal program will normally never exit like a regular software program would, so
+           these do not normally need to do much.
+           */
+        void __attribute__((weak, section(".reset.libc"))) __cxa_finalize(void *dso)
+        {
+        }
+
+        void __attribute__((noreturn, weak, section(".reset.libc"))) __llvm_libc_exit(int status)
+        {
+        #ifdef __DEBUG
+            __BKPT(0);
+        #endif
+
+            /* Nothing left to do but spin here forever. */
+            while(1) {}
+        }
+
+        /* Provide an errno variable used by LLVM-libc's math functions. This assumes that the
+           baremetal app can use a single global errno value. Multithreaded apps might want to
+           provide their own implementation that has thread-local errno values.
+         */
+        int * __attribute__((weak, section(".reset.libc"))) __llvm_libc_errno()
+        {
+            static int errno_impl;
+            return &errno_impl;
+        }
+        '''
+
+    return textwrap.dedent(funcs)
 
 def _get_reset_handler() -> str:
     '''Return a string containing the reset handler function for Cortex-M devices.
@@ -389,20 +403,13 @@ def _get_reset_handler() -> str:
         #endif
 
             _InitData();
-            _LibcInitArray();
+            __libc_init_array();
 
             if(_on_bootstrap)
                 _on_bootstrap();
 
             /* The app is ready to go, call main. */
             exit(main());
-
-        #ifdef __DEBUG
-            __BKPT(0);
-        #endif
-
-            /* Nothing left to do but spin here forever. */
-            while(1) {}
         }
         '''
     

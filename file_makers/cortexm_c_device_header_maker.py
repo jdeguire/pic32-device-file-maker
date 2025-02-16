@@ -129,7 +129,7 @@ def _get_file_prologue(devname: str) -> str:
 
     # extern "C"
     prologue += '#ifdef __cplusplus\n'
-    prologue += 'extern "c" {\n'
+    prologue += 'extern "C" {\n'
     prologue += '#endif\n'
 
     return prologue
