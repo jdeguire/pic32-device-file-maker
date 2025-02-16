@@ -234,13 +234,13 @@ def _get_MEMORY_regions(address_spaces: list[DeviceAddressSpace],
             # We need to add some region attributes to the main flash and RAM sections. Unfortunately,
             # the device info we can get from the ATDF files is not totally helpful here.
             if name == main_flash_region.name.lower():
-                memory_cmd += f'  {name:<34} (rx)  : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
+                memory_cmd += f'    {name:<34} (rx)  : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
             elif main_bootflash_region  and  name == main_bootflash_region.name.lower():
-                memory_cmd += f'  {name:<34} (rx)  : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
+                memory_cmd += f'    {name:<34} (rx)  : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
             elif name == main_ram_region.name.lower():
-                memory_cmd += f'  {name:<34} (rwx) : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
+                memory_cmd += f'    {name:<34} (rwx) : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
             else:
-                memory_cmd += f'  {name:<40} : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
+                memory_cmd += f'    {name:<40} : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
 
     return memory_cmd
 
@@ -272,12 +272,12 @@ def _get_fuse_MEMORY(addr_spaces: list[DeviceAddressSpace],
                         fuse_addr = base_addr + member.offset + (4*i)
                         region_name = ref.instance_name.lower() + '_' + member.name.lower() + str(i)
 
-                        memory_cmd += f'  {region_name:<40} : ORIGIN = 0x{fuse_addr:08X}, LENGTH = 0x04\n'
+                        memory_cmd += f'    {region_name:<40} : ORIGIN = 0x{fuse_addr:08X}, LENGTH = 0x04\n'
                 else:
                     fuse_addr = base_addr + member.offset
                     region_name = ref.instance_name.lower() + '_' + member.name.lower()
 
-                    memory_cmd += f'  {region_name:<40} : ORIGIN = 0x{fuse_addr:08X}, LENGTH = 0x04\n'
+                    memory_cmd += f'    {region_name:<40} : ORIGIN = 0x{fuse_addr:08X}, LENGTH = 0x04\n'
 
     return memory_cmd
 
@@ -301,196 +301,188 @@ def _get_standard_SECTIONS(main_flash_region: DeviceMemoryRegion,
     sections_cmd: str = f'''
         .vectors :
         {{
-          KEEP(*(.vectors*))
-          KEEP(*(.reset*))
+            KEEP(*(.vectors*))
+            KEEP(*(.reset*))
         }} > {vectors_region}
 
         .text :
         {{
-          *(.text*)
+            *(.text*)
 
-          KEEP(*(.init))
-          KEEP(*(.fini))
+            KEEP(*(.init))
+            KEEP(*(.fini))
 
-          . = ALIGN(4);
-          /* preinit data */
-          PROVIDE_HIDDEN (__preinit_array_start = .);
-          KEEP(*(.preinit_array))
-          PROVIDE_HIDDEN (__preinit_array_end = .);
+            . = ALIGN(4);
+            /* preinit data */
+            PROVIDE_HIDDEN (__preinit_array_start = .);
+            KEEP(*(.preinit_array))
+            PROVIDE_HIDDEN (__preinit_array_end = .);
 
-          . = ALIGN(4);
-          /* init data */
-          PROVIDE_HIDDEN (__init_array_start = .);
-          KEEP(*(SORT(.init_array.*)))
-          KEEP(*(.init_array))
-          PROVIDE_HIDDEN (__init_array_end = .);
+            . = ALIGN(4);
+            /* init data */
+            PROVIDE_HIDDEN (__init_array_start = .);
+            KEEP(*(SORT(.init_array.*)))
+            KEEP(*(.init_array))
+            PROVIDE_HIDDEN (__init_array_end = .);
 
-          . = ALIGN(4);
-          /* finit data */
-          PROVIDE_HIDDEN (__fini_array_start = .);
-          KEEP(*(SORT(.fini_array.*)))
-          KEEP(*(.fini_array))
-          PROVIDE_HIDDEN (__fini_array_end = .);
+            . = ALIGN(4);
+            /* finit data */
+            PROVIDE_HIDDEN (__fini_array_start = .);
+            KEEP(*(SORT(.fini_array.*)))
+            KEEP(*(.fini_array))
+            PROVIDE_HIDDEN (__fini_array_end = .);
 
-          /* .ctors */
-          *crtbegin.o(.ctors)
-          *crtbegin?.o(.ctors)
-          *(EXCLUDE_FILE(*crtend?.o *crtend.o) .ctors)
-          *(SORT(.ctors.*))
-          *(.ctors)
+            /* .ctors */
+            *crtbegin.o(.ctors)
+            *crtbegin?.o(.ctors)
+            *(EXCLUDE_FILE(*crtend?.o *crtend.o) .ctors)
+            *(SORT(.ctors.*))
+            *(.ctors)
 
-          /* .dtors */
-          *crtbegin.o(.dtors)
-          *crtbegin?.o(.dtors)
-          *(EXCLUDE_FILE(*crtend?.o *crtend.o) .dtors)
-          *(SORT(.dtors.*))
-          *(.dtors)
+            /* .dtors */
+            *crtbegin.o(.dtors)
+            *crtbegin?.o(.dtors)
+            *(EXCLUDE_FILE(*crtend?.o *crtend.o) .dtors)
+            *(SORT(.dtors.*))
+            *(.dtors)
 
-          *(.rodata*)
+            *(.rodata*)
 
-          KEEP(*(.eh_frame*))
+            KEEP(*(.eh_frame*))
         }} > {progflash_name}
 
         /*
-          * SG veneers:
-          * All SG veneers are placed in the special output section .gnu.sgstubs. Its start address
-          * must be set, either with the command line option '--section-start' or in a linker script,
-          * to indicate where to place these veneers in memory.
-          */
-        /*
+         * SG veneers:
+         * All SG veneers are placed in the special output section .gnu.sgstubs. Its start address
+         * must be set, either with the command line option '--section-start' or in a linker script,
+         * to indicate where to place these veneers in memory.
+         */
         .gnu.sgstubs :
         {{
-          . = ALIGN(32);
+            . = ALIGN(32);
+            KEEP(*(.gnu.sgstubs))
         }} > {progflash_name}
-        */
+
         .ARM.extab :
         {{
-          *(.ARM.extab* .gnu.linkonce.armextab.*)
+            *(.ARM.extab* .gnu.linkonce.armextab.*)
         }} > {progflash_name}
 
         __exidx_start = .;
         .ARM.exidx :
         {{
-          *(.ARM.exidx* .gnu.linkonce.armexidx.*)
+            *(.ARM.exidx* .gnu.linkonce.armexidx.*)
         }} > {progflash_name}
         __exidx_end = .;
 
-        .copy.table :
-        {{
-          . = ALIGN(4);
-          __copy_table_start__ = .;
-
-          LONG (LOADADDR(.data))
-          LONG (ADDR(.data))
-          LONG (SIZEOF(.data) / 4)
-
-          /* Add each additional data section here */
-
-          __copy_table_end__ = .;
-        }} > {progflash_name}
-
-        .zero.table :
-        {{
-          . = ALIGN(4);
-          __zero_table_start__ = .;
-
-          LONG (ADDR(.bss))
-          LONG (SIZEOF(.bss) / 4)
-
-          /* Add each additional bss section here */
-
-          __zero_table_end__ = .;
-        }} > {progflash_name}
-
-        /*
-          * This __etext variable is kept for backward compatibility with older,
-          * ASM based startup files.
-          */
         PROVIDE(__etext = LOADADDR(.data));
 
         .data : ALIGN(4)
         {{
-          __data_start__ = .;
-          *(vtable)
-          *(.data)
-          *(.data.*)
+            *(vtable)
+            *(.data)
+            *(.data.*)
+            *(.gnu.linkonce.d.*)
 
-          KEEP(*(.jcr*))
-          . = ALIGN(4);
-          /* All data end */
-          __data_end__ = .;
-
+            KEEP(*(.jcr*))
+            . = ALIGN(4);
         }} > {ram_name} AT > {progflash_name}
 
-        /*
-          * Secondary data section, optional
-          *
-          * Remember to add each additional data section
-          * to the .copy.table above to assure proper
-          * initialization during startup.
-          */
-        /*
-        .data2 : ALIGN(4)
+    	PROVIDE(__data_start = ADDR(.data));
+	    PROVIDE(__data_source = LOADADDR(.data));
+
+        /* Thread local initialized data. This gets space allocated as it is expected to be placed
+         * in ram to be used as a template for TLS data blocks allocated at runtime. We're slightly
+         * abusing that by placing the data in flash where it will be copied into the allocated ram
+         * addresses by the existing data initialization code in crt0.
+         */
+        .tdata :
         {{
-          . = ALIGN(4);
-          __data2_start__ = .;
-          *(.data2)
-          *(.data2.*)
-          . = ALIGN(4);
-          __data2_end__ = .;
-
+            *(.tdata .tdata.* .gnu.linkonce.td.*)
+            PROVIDE(__data_end = .);
+            PROVIDE(__tdata_end = .);
         }} > {ram_name} AT > {progflash_name}
-        */
 
+        PROVIDE(__non_tls_data_end = ADDR(.tdata));
+        PROVIDE(__tls_base = ADDR(.tdata));
+        PROVIDE(__tdata_start = ADDR(.tdata));
+        PROVIDE(__tdata_source = LOADADDR(.tdata) );
+        PROVIDE(__tdata_source_end = LOADADDR(.tdata) + SIZEOF(.tdata) );
+        PROVIDE(__data_source_end = __tdata_source_end );
+        PROVIDE(__tdata_size = SIZEOF(.tdata) );
+
+        PROVIDE(__edata = __data_end );
+        PROVIDE(_edata = __data_end );
+        PROVIDE(edata = __data_end );
+        PROVIDE(__data_size = __data_end - __data_start );
+        PROVIDE(__data_source_size = __data_source_end - __data_source );
+
+        .tbss (NOLOAD) :
+        {{
+            *(.tbss .tbss.* .gnu.linkonce.tb.*)
+            *(.tcommon)
+            PROVIDE( __tls_end = . );
+            PROVIDE( __tbss_end = . );
+        }} > {ram_name} AT > {ram_name}
+
+        PROVIDE(__bss_start = ADDR(.tbss));
+        PROVIDE(__tbss_start = ADDR(.tbss));
+        PROVIDE(__tbss_offset = ADDR(.tbss) - ADDR(.tdata) );
+        PROVIDE(__tbss_size = SIZEOF(.tbss) );
+        PROVIDE(__tls_size = __tls_end - __tls_base );
+        PROVIDE(__tls_align = MAX(ALIGNOF(.tdata), ALIGNOF(.tbss)) );
+        PROVIDE(__arm32_tls_tcb_offset = MAX(8, __tls_align) );
+        PROVIDE(__arm64_tls_tcb_offset = MAX(16, __tls_align) );
+
+        /*
+        * The linker special cases .tbss segments which are
+        * identified as segments which are not loaded and are
+        * thread_local.
+        *
+        * For these segments, the linker does not advance 'dot'
+        * across them.  We actually need memory allocated for tbss,
+        * so we create a special segment here just to make room
+        */
+        /*
+        .tbss_space (NOLOAD) :
+        {{
+            . = ADDR(.tbss);
+            . = . + SIZEOF(.tbss);
+        }} > {ram_name} AT > {ram_name}
+        */
+        
         .bss :
         {{
-          . = ALIGN(4);
-          __bss_start__ = .;
-          *(.bss)
-          *(.bss.*)
-          *(COMMON)
-          . = ALIGN(4);
-          __bss_end__ = .;
+            . = ALIGN(4);
+            *(.bss)
+            *(.bss.*)
+            *(COMMON)
+            . = ALIGN(4);
+            __bss_end = .;
         }} > {ram_name} AT > {ram_name}
 
-        /*
-          * Secondary bss section, optional
-          *
-          * Remember to add each additional bss section
-          * to the .zero.table above to assure proper
-          * initialization during startup.
-          */
-        /*
-        .bss2 :
-        {{
-          . = ALIGN(4);
-          __bss2_start__ = .;
-          *(.bss2)
-          *(.bss2.*)
-          . = ALIGN(4);
-          __bss2_end__ = .;
-        }} > {ram_name} AT > {ram_name}
-        */
+        PROVIDE(__non_tls_bss_start = ADDR(.bss) );
+        PROVIDE(__end = __bss_end );
+        PROVIDE(_end = __bss_end );
+        PROVIDE(end = __bss_end );
+        PROVIDE(__bss_size = __bss_end - __bss_start );
 
         .heap (NOLOAD) :
         {{
-          . = ALIGN(8);
-          __end__ = .;
-          _end = .;     /* This is referenced by LLVM-libc for heap allocation. */
-          PROVIDE(end = .);
-          . = . + __HEAP_SIZE;
-          . = ALIGN(8);
-          __HeapLimit = .;
-          __llvm_libc_heap_limit = .;
+            . = ALIGN(8);
+            . = . + __HEAP_SIZE;
+            . = ALIGN(8);
+            __HeapLimit = .;
+            __llvm_libc_heap_limit = .;
         }} > {ram_name}
 
         .stack (ORIGIN({ram_name}) + LENGTH({ram_name}) - __STACK_SIZE - __STACKSEAL_SIZE) (NOLOAD) :
         {{
-          . = ALIGN(8);
-          __StackLimit = .;
-          . = . + __STACK_SIZE;
-          . = ALIGN(8);
-          __StackTop = .;
+            . = ALIGN(8);
+            __StackLimit = .;
+            . = . + __STACK_SIZE;
+            . = ALIGN(8);
+            __StackTop = .;
         }} > {ram_name}
         PROVIDE(__stack = __StackTop);
 
@@ -500,10 +492,10 @@ def _get_standard_SECTIONS(main_flash_region: DeviceMemoryRegion,
         /*
         .stackseal (ORIGIN({ram_name}) + LENGTH({ram_name}) - __STACKSEAL_SIZE) (NOLOAD) :
         {{
-          . = ALIGN(8);
-          __StackSeal = .;
-          . = . + 8;
-          . = ALIGN(8);
+            . = ALIGN(8);
+            __StackSeal = .;
+            . = . + 8;
+            . = ALIGN(8);
         }} > {ram_name}
         */
 
@@ -511,7 +503,7 @@ def _get_standard_SECTIONS(main_flash_region: DeviceMemoryRegion,
         ASSERT(__StackLimit >= __HeapLimit, "RAM region overflowed with stack")
         '''
 
-    return textwrap.indent(textwrap.dedent(sections_cmd), '  ')
+    return textwrap.indent(textwrap.dedent(sections_cmd), '    ')
 
 
 def _get_fuse_SECTIONS(addr_spaces: list[DeviceAddressSpace], fuses: PeripheralGroup) -> str:

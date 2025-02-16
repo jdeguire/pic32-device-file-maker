@@ -111,13 +111,16 @@ def _get_common_options() -> str:
         # "multilib.yaml" is located.
         --sysroot="<CFGDIR>/../cortex-m"
 
-        # Specify system include directories
+        # Specify system include directories. The C++ includes need to be specified first beucase
+        # they use #include_next to redirect to the C headers as needed. The C++ headers check
+        # for __cplusplus to be defined and so this should be fine for C-only projects.
         -isystem "<CFGDIR>/../cortex-m/include/c++/v1"
-        -isystem "<CFGDIR>/../CMSIS/Core/Include"
         -isystem "<CFGDIR>/../cortex-m/include"
+        -isystem "<CFGDIR>/../CMSIS/Core/Include"
 
         # Ensure we are using the linker and runtimes bundled with this toolchain. Clang can try to
-        # use the system runtime and linker, which we do not want.
+        # use the system runtime and linker, which we do not want. libc++ is statically linked
+        # against libc++abi because there is no option like these to specify that.
         -rtlib=compiler-rt
         -fuse-ld=lld
         -stdlib=libc++

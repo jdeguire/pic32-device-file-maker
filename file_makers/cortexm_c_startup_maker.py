@@ -215,9 +215,9 @@ def _get_startup_feature_functions() -> str:
            M-Profile Vector Extensions because that uses the 16 double-precision FPU registers as 8
            128-bit vector registers.
            */
+        #if (defined(__ARM_FP) && (0 != __ARM_FP))  ||  (defined(__ARM_FEATURE_MVE) && (__ARM_FEATURE_MVE > 0))
         void __attribute__((weak, section(".reset.startup"))) _EnableFpu(void)
         {
-        #if (defined(__ARM_FP) && (0 != __ARM_FP))  ||  (defined(__ARM_FEATURE_MVE) && (__ARM_FEATURE_MVE > 0))
             SCB->CPACR |= 0x00F00000;
             __DSB();
             __ISB();
@@ -229,22 +229,23 @@ def _get_startup_feature_functions() -> str:
         #  else
             __set_FPSCR(0);
         #  endif
-        #endif
         }
+        #endif
 
         /* Enable the Cortex-M Cache Controller with default values. This is used to supplement
            Cortex-M devices that do not have a CPU cache.
            */
+        #if defined(ID_CMCC)
         void __attribute__((weak, section(".reset.startup"))) _EnableCmccCache(void)
         {
-        #if defined(ID_CMCC)
             CMCC_REGS->CMCC_CTRL |= CMCC_CTRL_CEN_Msk;
-        #endif
         }
+        #endif
 
         /* Enable the Cortex-M CPU instruction and data caches. This applies to CPUs with built-in
            caches.
            */
+        #if __ICACHE_PRESENT == 1  ||  __DCACHE_PRESENT == 1
         void __attribute__((weak, section(".reset.startup"))) _EnableCpuCache(void)
         {
             // These invalidate the caches before enabling them.
@@ -255,24 +256,25 @@ def _get_startup_feature_functions() -> str:
             SCB_EnableDCache();
         #endif
         }
+        #endif
 
         /* Enable branch prediction and the Low Overhead Branch extension if either are present.
            */
+        #if defined(SCB_CCR_LOB_Msk) || defined(SCB_CCR_BP_Msk)
         void __attribute__((weak, section(".reset.startup"))) _EnableBranchCaches(void)
         {
-        #if defined(SCB_CCR_LOB_Msk)
+        #  if defined(SCB_CCR_LOB_Msk)
             /* Enable Loop and branch info cache */
             SCB->CCR |= SCB_CCR_LOB_Msk;
-        #endif
-        #if defined(SCB_CCR_BP_Msk)
+        #  endif
+        #  if defined(SCB_CCR_BP_Msk)
             /* Enable Branch Prediction */
             SCB->CCR |= SCB_CCR_BP_Msk;
-        #endif
-        #if defined(SCB_CCR_LOB_Msk) || defined(SCB_CCR_BP_Msk)
+        #  endif
             __DSB();
             __ISB();
-        #endif
         }
+        #endif
         '''
 
     return textwrap.dedent(funcs)
@@ -282,40 +284,33 @@ def _get_data_init_functions() -> str:
     constructors.
     '''
     funcs: str = '''
-        /* Initialize data found in the .data and .bss sections. This is based on the 
-           __cmsis_start() function found in "CMSIS/Core/Include/m-profile/cmsis_gcc_m.h".
+        /* Initialize data found in the .data, .tdata, .tbss, and .bss sections. The .tdata and 
+           .tbss sections are for thread-local storage. Those are placed between .data and .bss so
+           we can initialize the thread-local sections as though they were part of the .data and
+           .bss sections. This is sufficient to let libraries declare members as thread-local in
+           a single-threaded app.
            */
         void __attribute__((weak, section(".reset.startup"))) _InitData(void)
         {
-            typedef struct __copy_table {
-                uint32_t const* src;
-                uint32_t* dest;
-                uint32_t  wlen;
-            } __copy_table_t;
+            // These are defined in the linker script. These span the normal and thread-local
+            // sections so they can be initialized as one.
+            extern uint32_t __data_start;
+            extern uint32_t __data_source;
+            extern uint32_t __data_end;
+            extern uint32_t __bss_start;
+            extern uint32_t __bss_end;
 
-            typedef struct __zero_table {
-                uint32_t* dest;
-                uint32_t  wlen;
-            } __zero_table_t;
-
-            // These are defined in the linker script
-            extern const __copy_table_t __copy_table_start__;
-            extern const __copy_table_t __copy_table_end__;
-            extern const __zero_table_t __zero_table_start__;
-            extern const __zero_table_t __zero_table_end__;
-
-            // Copy .data sections.
-            for(__copy_table_t const* pTable = &__copy_table_start__; pTable < &__copy_table_end__; ++pTable)
+            uint32_t *src = &__data_source;
+            uint32_t *dst = &__data_start;
+            while(dst < &__data_end)
             {
-                for(uint32_t i = 0u; i < pTable->wlen; ++i)
-                    pTable->dest[i] = pTable->src[i];
+                *dst++ = *src++;
             }
 
-            // Zero out .bss sections.
-            for(__zero_table_t const* pTable = &__zero_table_start__; pTable < &__zero_table_end__; ++pTable)
+            uint32_t *bss = &__bss_start;
+            while(bss < &__bss_end)
             {
-                for(uint32_t i = 0u; i < pTable->wlen; ++i)
-                    pTable->dest[i] = 0u;
+                *bss++ = 0;
             }
         }
         '''
@@ -326,6 +321,11 @@ def _get_data_init_functions() -> str:
 def _get_llvm_libc_functions() -> str:
     '''Return a string containing functions that need to be defined because they are referenced
     by LLVM-libc.
+    
+    Yes, these should probably be in some support library rather than here in the startup module.
+    Putting them here simplifies the build setup and gives users one file to modify if they want
+    to make custom funcions. Since these are weak symbols, users should be able to override them
+    with their own implementations if needed.
     '''
     funcs: str = '''
         /* These next two functions are called by LLVM-libc's exit() function. The first would
@@ -353,11 +353,25 @@ def _get_llvm_libc_functions() -> str:
         /* Provide an errno variable used by LLVM-libc's math functions. This assumes that the
            baremetal app can use a single global errno value. Multithreaded apps might want to
            provide their own implementation that has thread-local errno values.
-         */
+           */
         int * __attribute__((weak, section(".reset.libc"))) __llvm_libc_errno()
         {
             static int errno_impl;
             return &errno_impl;
+        }
+
+        /* Return a pointer to a thread control block. This is used only to access thread-local
+           storage, so this default version will return a pointer with the offset to thread-local
+           storage baked in. The ARM ABI specs say this should not clobber R1-R3, but here we're
+           relying on the compiler to not mess with those. See this link for some good info:
+           https://kb.segger.com/Thread-Local_Storage#No_OS_/_Single_Thread_System
+           */
+        void * __attribute__((weak, section(".reset.libc"))) __aeabi_read_tp(void)
+        {
+            // On 32-bit ARM, the thread storage pointer is 8 bytes into the thread control
+            // block, so just subtract off 8. It's 16 bytes on AArch64.
+            extern const uint8_t __tls_base;
+            return (void *)&__tls_base - 8;
         }
         '''
 
@@ -392,10 +406,18 @@ def _get_reset_handler() -> str:
             if(_on_reset)
                 _on_reset();
 
+        #if (defined(__ARM_FP) && (0 != __ARM_FP))  ||  (defined(__ARM_FEATURE_MVE) && (__ARM_FEATURE_MVE > 0))
             _EnableFpu();
+        #endif
+        #if __ICACHE_PRESENT == 1  ||  __DCACHE_PRESENT == 1
             _EnableCpuCache();
+        #endif
+        #if defined(SCB_CCR_LOB_Msk) || defined(SCB_CCR_BP_Msk)
             _EnableBranchCaches();
+        #endif
+        #if defined(ID_CMCC)
             _EnableCmccCache();
+        #endif
 
             /* Set the vector table base address, if supported by this device. */
         #if defined (__VTOR_PRESENT) && (__VTOR_PRESENT == 1U)
