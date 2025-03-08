@@ -32,6 +32,7 @@ device. A configuration file would be passed to Clang using the "-config=" optio
 options needed for the desired target.
 '''
 
+from pathlib import Path
 from device_info import *
 import os
 from . import strings
@@ -48,7 +49,7 @@ _L1CACHE_DATA = 1
 _L1CACHE_INST = 2
 
 
-def run(devinfo: DeviceInfo, outfile: IO[str], default_ld_path: str) -> None:
+def run(devinfo: DeviceInfo, outfile: IO[str], default_ld_path: Path) -> None:
     '''Make a Clang target configuration file for the given device assuming it is a PIC or SAM
     Cortex-M device.
     '''
@@ -60,15 +61,15 @@ def run(devinfo: DeviceInfo, outfile: IO[str], default_ld_path: str) -> None:
 
     outfile.write('# Point to device-specific lib directory.\n')
     outfile.write('# This is where the vectors code is located.\n')
-    outfile.write(f'-L "<CFGDIR>/{os.path.dirname(default_ld_path)}"\n\n')
+    outfile.write(f'-L "<CFGDIR>/{default_ld_path.parent.as_posix()}"\n\n')
 
     outfile.write(f'# Tell Clang to look in the device-specifc directory for some files.\n')
     outfile.write(f'# In particular, we put crt0.o in here since that is device-speciifc.\n')
-    outfile.write(f'-B "<CFGDIR>/{os.path.dirname(default_ld_path)}"\n\n')
+    outfile.write(f'-B "<CFGDIR>/{default_ld_path.parent.as_posix()}"\n\n')
 
     outfile.write('# Set default linker script.\n')
     outfile.write('# This is used only if -T is not specified at link time.\n')
-    outfile.write(f'-Wl,--default-script="<CFGDIR>/{default_ld_path}"\n\n')
+    outfile.write(f'-Wl,--default-script="<CFGDIR>/{default_ld_path.as_posix()}"\n\n')
 
     outfile.write('# Useful target-specific macros.\n')
     macros = _get_target_macros(devinfo)

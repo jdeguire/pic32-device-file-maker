@@ -308,7 +308,7 @@ if '__main__' == __name__:
         #
         config_path = args.output_dir / 'config' / (devinfo.name.lower() + '.cfg')
         with open_for_writing(config_path) as cfg:
-            default_ld_path = os.path.relpath(ld_path, config_path.parent)
+            default_ld_path = Path(os.path.relpath(ld_path, config_path.parent))
             cortexm_config_file_maker.run(devinfo, cfg, default_ld_path)
 
         # Gather device names and families we can use to make an all-encompassing processor header
