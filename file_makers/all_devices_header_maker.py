@@ -55,7 +55,11 @@ def run(hdr: IO[str], basename: str, device_families: dict[str, list[str]]) -> N
     hdr.write(f'#define {basename.upper()}_H_\n\n')
 
     first_family = True
-    for family,devices in device_families.items():
+    for family, devices in device_families.items():
+        # This is a special "catch-all" family, so handle this afterward.
+        if '_' == family:
+            continue
+
         if first_family:
             hdr.write(f'#if defined(__{family})\n')
         else:
@@ -65,12 +69,10 @@ def run(hdr: IO[str], basename: str, device_families: dict[str, list[str]]) -> N
 
         first_dev = True
         for d in devices:
-            name = d.upper()
-
             if first_dev: 
-                hdr.write(f'#  if defined(__{name}__)\n')
+                hdr.write(f'#  if defined(__{d.upper()}__)\n')
             else:
-                hdr.write(f'#  elif defined(__{name}__)\n')
+                hdr.write(f'#  elif defined(__{d.upper()}__)\n')
             
             first_dev = False
 
@@ -80,8 +82,14 @@ def run(hdr: IO[str], basename: str, device_families: dict[str, list[str]]) -> N
         hdr.write(f'#    error Unknown device for {family} family!\n')
         hdr.write('#  endif\n')
 
+    # Handle specialty devices like the CEC, MEC, and so on, series. These are not consistent in
+    # their family naming, so we lump them together.
+    for device in device_families['_']:
+        hdr.write(f'#elif defined(__{device.upper()}__)\n')
+        hdr.write(f'#  include "proc/{device.lower()}.h"\n')
+
     hdr.write('#else\n')
-    hdr.write('#  error Unknown device family!\n')
+    hdr.write('#  error Unknown device or family!\n')
     hdr.write('#endif\n')
 
     hdr.write(f'\n#endif /* ifndef {basename.upper()}_H_ */\n')

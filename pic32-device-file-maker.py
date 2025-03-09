@@ -315,11 +315,14 @@ if '__main__' == __name__:
         # file. That is, instead of including the individual processor header in your project, you
         # can be lazy and include this one to let it figure out what processor you have. Family
         # names for "PIC32" devices are not always consistent, so use the first portion of the name
-        # instead, like "PIC32CM" or "PIC32CZ".
+        # instead, like "PIC32CM" or "PIC32CZ". The specialty devices (CEC__, MEC__, etc.) are not
+        # consistent with their family names, so just lump them all together.
         #
         family = devinfo.family.upper()
         if family.startswith('PIC32'):
             family = devinfo.name[:7].upper()
+        elif not family.startswith('SAM'):
+            family = '_'
 
         if family in device_families:
             device_families[family].append(devinfo.name)
