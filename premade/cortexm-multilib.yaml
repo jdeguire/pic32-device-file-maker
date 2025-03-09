@@ -36,6 +36,7 @@ MultilibVersion: 1.0
 # last in the list wins. A ToolChain may instead opt to use more than one
 # multilib, layered on top of each other.
 
+# LLVM appends '/lib' to these directories when looking for the libraries.
 Variants:
 - Dir: v6m/nofp
   Flags: [--target=thumbv6m-unknown-none-eabi, -mfpu=none]
