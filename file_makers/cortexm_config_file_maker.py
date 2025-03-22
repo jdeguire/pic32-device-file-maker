@@ -194,6 +194,9 @@ def _get_target_macros(devinfo: DeviceInfo) -> dict[str, str]:
         macros[f'__{name[:6]}'] = ''
         macros[f'__{name[:7]}__'] = ''
         macros[f'__{name[:7]}'] = ''
+        # Add macros that omit the "PIC" part. This keeps some compatibility with XC32.
+        macros[f'__{name[3:]}__'] = ''
+        macros[f'__{name[3:]}'] = ''
 
     l1cache = _get_target_l1cache(devinfo)
     if _L1CACHE_NONE != l1cache:

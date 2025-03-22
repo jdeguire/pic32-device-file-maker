@@ -103,7 +103,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     outfile.write('SECTIONS\n{\n')
     outfile.write(_get_standard_SECTIONS(main_flash_region, main_ram_region, main_bootflash_region))
     if fuses_periph:
-        outfile.write('\n  /* Device configuration fuses */')
+        outfile.write('\n    /* Device configuration fuses */')
         outfile.write(_get_fuse_SECTIONS(unique_addr_spaces, periph))
 
     outfile.write('\n}\n')
@@ -388,8 +388,8 @@ def _get_standard_SECTIONS(main_flash_region: DeviceMemoryRegion,
             . = ALIGN(4);
         }} > {ram_name} AT > {progflash_name}
 
-    	PROVIDE(__data_start = ADDR(.data));
-	    PROVIDE(__data_source = LOADADDR(.data));
+        PROVIDE(__data_start = ADDR(.data));
+        PROVIDE(__data_source = LOADADDR(.data));
 
         /* Thread local initialized data. This gets space allocated as it is expected to be placed
          * in ram to be used as a template for TLS data blocks allocated at runtime. We're slightly
@@ -503,7 +503,8 @@ def _get_standard_SECTIONS(main_flash_region: DeviceMemoryRegion,
         ASSERT(__StackLimit >= __HeapLimit, "RAM region overflowed with stack")
         '''
 
-    return textwrap.indent(textwrap.dedent(sections_cmd), '    ')
+    sections_cmd = textwrap.dedent(sections_cmd)
+    return textwrap.indent(sections_cmd, '    ')
 
 
 def _get_fuse_SECTIONS(addr_spaces: list[DeviceAddressSpace], fuses: PeripheralGroup) -> str:
@@ -538,7 +539,7 @@ def _get_fuse_SECTIONS(addr_spaces: list[DeviceAddressSpace], fuses: PeripheralG
 
                     fuse_str += f'\n{section_name:<40} : {{ KEEP(*({section_name})) }} > {region_name}'
 
-    return textwrap.indent(fuse_str, '  ')
+    return textwrap.indent(fuse_str, '    ')
 
 
 def _find_start_of_address_space(addr_spaces: list[DeviceAddressSpace], name: str) -> int:
