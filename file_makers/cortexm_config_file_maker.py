@@ -49,7 +49,7 @@ _L1CACHE_DATA = 1
 _L1CACHE_INST = 2
 
 
-def run(devinfo: DeviceInfo, outfile: IO[str], default_ld_path: Path) -> None:
+def run(devinfo: DeviceInfo, outfile: IO[str], default_ld_path: Path, extra_macros: list[str]) -> None:
     '''Make a Clang target configuration file for the given device assuming it is a PIC or SAM
     Cortex-M device.
     '''
@@ -77,6 +77,12 @@ def run(devinfo: DeviceInfo, outfile: IO[str], default_ld_path: Path) -> None:
         if value:
             outfile.write(f'-D{macro}={value}\n')
         else:
+            outfile.write(f'-D{macro}\n')
+
+    # Any extra macros provided need to be in the format expected by Clang's '-D' option.
+    if extra_macros:
+        outfile.write('\n# Additional macros.\n')
+        for macro in extra_macros:
             outfile.write(f'-D{macro}\n')
 
     # This file does not have an epilogue.

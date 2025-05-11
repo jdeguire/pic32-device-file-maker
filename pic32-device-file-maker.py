@@ -216,6 +216,8 @@ def get_command_line_arguments() -> argparse.Namespace:
     # option is special and will exit after printing the version string.
     parser.add_argument('packs_dir', type=Path,
                         help='path to the packs directory containing Microchip device info')
+    parser.add_argument('--define-macro', '-D', action='append', metavar='MACRO',
+                        help='define a macro to be included in device configuration files')
     parser.add_argument('--output-dir', type=Path, default=Path(os.getcwd()), metavar='DIR',
                         help='where to put the created device files (default is current working dir)')
     parser.add_argument('--parse-jobs', type=int, default=0, metavar='JOBS',
@@ -288,7 +290,8 @@ if '__main__' == __name__:
             elif periph.id  and  'system_ip' not in periph.id.lower():
                 name = periph.name.lower()
                 id = periph.id.lower()
-                ver = periph.version.lower()
+                ver = periph.version.lower().replace(' ', '_')
+
                 if ver:
                     full_name = f'{name}_{id}_{ver}'
                 else:
@@ -309,7 +312,7 @@ if '__main__' == __name__:
         config_path = args.output_dir / 'config' / (devinfo.name.lower() + '.cfg')
         with open_for_writing(config_path) as cfg:
             default_ld_path = Path(os.path.relpath(ld_path, config_path.parent))
-            cortexm_config_file_maker.run(devinfo, cfg, default_ld_path)
+            cortexm_config_file_maker.run(devinfo, cfg, default_ld_path, args.define_macro)
 
         # Gather device names and families we can use to make an all-encompassing processor header
         # file. That is, instead of including the individual processor header in your project, you

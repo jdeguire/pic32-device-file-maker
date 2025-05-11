@@ -41,12 +41,13 @@ on Windows this would be `C:/Program Files/MPLAB X/<version>/packs`.
 you downloaded Harmony 3. If not, you can get the packs from the `dev_packs` repository found on
 the Microchip-MPLAB-Harmony GitHub page.
 
-Of these three options, the second one seems to be the most up-to-date. I'm not yet sure how the
-MPLAB Extensions for VS Code will handle packs, but I presume it'll still use the `.mchp_packs`
-location or something similar.
+I'm not yet sure how the MPLAB Extensions for VS Code will handle packs, but I presume it'll still
+use the `.mchp_packs` location or something similar.
 
 Once you find the packs you need, you can copy that directory to somewhere easier to remember, such
-as wherever you downloaded this app.
+as wherever you downloaded this app. This might be necessary anyway because MPLAB X will not contain
+packs for new devices released after the MPLAB X version and because the downloaded pack updates will
+contain only updates. Harmony 3 might contain everything you need, so maybe check there first.
 
 A packs directory may contain multiple versions of a pack. The app makes sure to only parse one
 file per device, so you don't need to remove extra versions. The app relies on whatever order
@@ -73,6 +74,13 @@ This will look for the ".atdf" files in the given "packs_dir" and output the gen
 your working directory (that is, the directory from which you ran the app). You can optionally change
 the ouput directory with the `--output_dir` option. The generated files are always put into a
 subdirectory called `pic32-device-files` in your chosen output directory.
+
+This app will create a device-specific configuration file for each device it finds. You would pass
+this to Clang with the `--config` option to use your desired device. Use the `--define-macro <macro>`
+option to add a macro definition to each device config file. The `<macro>` argument needs to follow
+the same convention as Clang's (and GCC's) `-D` option. You can specify this option multiple times
+to add multiple macros. If you are running this app through the [buildPic32Clang](https://github.com/jdeguire/buildPic32Clang)
+script, then that will pass macros to this app specifying version numbers of the PIC32Clang toolset.
 
 This app uses the Python `multiprocess` module to parse the device info files. You can control how
 many processes are created to do this using the `--parse-jobs` argument. The default and maximum
