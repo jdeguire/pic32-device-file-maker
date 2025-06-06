@@ -252,7 +252,7 @@ def _get_peripheral_address_macros(peripherals: list[PeripheralGroup],
     '''
     base_macros: str = ''
     decl_macros: str = ''
-    array_macros: str = ''
+    array_defs: str = ''
 
     for periph in peripherals:
         if _peripheral_is_special(periph):
@@ -273,15 +273,16 @@ def _get_peripheral_address_macros(peripherals: list[PeripheralGroup],
                 decl_macros_list.append(decl_macro_name)
 
         if decl_macros_list:
-            array_name = periph.name.upper() + 'n_REGS'
-            array_type = 'volatile ' + periph.name.lower() + '_regs_t*'
-            array_macros += f'#define {array_name:<32} (({array_type}[]){{{', '.join(decl_macros_list)}}})\n'
+            array_type = periph.name.lower() + '_regs_t*'
+            array_name = periph.name.upper() + 'n_REGS[]'
+            array_decl = f'static volatile {array_type} {array_name}'
+            array_defs += f'{array_decl:<48} = {{{', '.join(decl_macros_list)}}};\n'
 
     return (base_macros + 
             '\n#ifndef __ASSEMBLER__\n' +
             decl_macros +
             '\n' +
-            array_macros +
+            array_defs +
             '#endif /* ifndef __ASSEMBLER__ */\n')
 
 
