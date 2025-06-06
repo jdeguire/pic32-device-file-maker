@@ -122,10 +122,10 @@ def _get_file_prologue(devname: str) -> str:
     # File version
     # For now, make this the same as our version
     fm_version: list[str] = version.FILE_MAKER_VERSION.split('.')
-    prologue += f'#define FILE_VERSION_STR   "{version.FILE_MAKER_VERSION}"\n'
-    prologue += f'#define FILE_VERSION_MAJOR ({fm_version[0]})\n'
-    prologue += f'#define FILE_VERSION_MINOR ({fm_version[1]})\n'
-    prologue += f'#define FILE_VERSION_PATCH ({fm_version[2]})\n\n'
+    prologue += f'#define DEVICE_FILE_VERSION_STR   "{version.FILE_MAKER_VERSION}"\n'
+    prologue += f'#define DEVICE_FILE_VERSION_MAJOR ({fm_version[0]})\n'
+    prologue += f'#define DEVICE_FILE_VERSION_MINOR ({fm_version[1]})\n'
+    prologue += f'#define DEVICE_FILE_VERSION_PATCH ({fm_version[2]})\n\n'
 
     # extern "C"
     prologue += '#ifdef __cplusplus\n'
@@ -252,10 +252,13 @@ def _get_peripheral_address_macros(peripherals: list[PeripheralGroup],
     '''
     base_macros: str = ''
     decl_macros: str = ''
+    array_macros: str = ''
 
     for periph in peripherals:
         if _peripheral_is_special(periph):
             continue
+
+        decl_macros_list: list[str] = []
 
         for instance in periph.instances:
             for group_ref in instance.reg_group_refs:
@@ -267,10 +270,18 @@ def _get_peripheral_address_macros(peripherals: list[PeripheralGroup],
 
                 base_macros += f'#define {base_macro_name:<32} (0x{macro_addr:08X}ul)\n'
                 decl_macros += f'#define {decl_macro_name:<32} ((volatile {macro_type}*){base_macro_name})\n'
+                decl_macros_list.append(decl_macro_name)
+
+        if decl_macros_list:
+            array_name = periph.name.upper() + 'n_REGS'
+            array_type = 'volatile ' + periph.name.lower() + '_regs_t*'
+            array_macros += f'#define {array_name:<32} (({array_type}[]){{{', '.join(decl_macros_list)}}})\n'
 
     return (base_macros + 
             '\n#ifndef __ASSEMBLER__\n' +
             decl_macros +
+            '\n' +
+            array_macros +
             '#endif /* ifndef __ASSEMBLER__ */\n')
 
 
