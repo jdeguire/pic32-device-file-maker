@@ -275,8 +275,8 @@ def _get_peripheral_address_macros(peripherals: list[PeripheralGroup],
         if decl_macros_list:
             array_type = periph.name.lower() + '_regs_t*'
             array_name = periph.name.upper() + 'n_REGS[]'
-            array_decl = f'static volatile {array_type} {array_name}'
-            array_defs += f'{array_decl:<48} = {{{', '.join(decl_macros_list)}}};\n'
+            array_decl = f'static volatile __attribute__((unused)) {array_type} {array_name}'
+            array_defs += f'{array_decl:<72} = {{{', '.join(decl_macros_list)}}};\n'
 
     return (base_macros + 
             '\n#ifndef __ASSEMBLER__\n' +
