@@ -145,9 +145,7 @@ def _get_target_arch_options(devinfo: DeviceInfo) -> str:
 
     target_str: str = '-target arm-none-eabi\n'
 
-    arch_str = f'-march={arch_name}'
-    if mve_ext:
-        arch_str += f'+{mve_ext}'
+    arch_str = f'-march={arch_name}{mve_ext}'
     arch_str += '\n'
 
     fpu_str: str = f'-mfpu={fpu_name}\n'
@@ -204,20 +202,10 @@ def _get_target_macros(devinfo: DeviceInfo) -> dict[str, str]:
         macros[f'__{name[3:]}__'] = ''
         macros[f'__{name[3:]}'] = ''
 
-    l1cache = _get_target_l1cache(devinfo)
-    if _L1CACHE_NONE != l1cache:
-        macros[f'__PIC32_HAS_L1CACHE'] = ''
-
-        if l1cache & _L1CACHE_DATA:
-            macros[f'__PIC32_HAS_L1DCACHE'] = ''
-        if l1cache & _L1CACHE_INST:
-            macros[f'__PIC32_HAS_L1ICACHE'] = ''
-    
     fpu_width = _get_fpu_width(devinfo)
-    if _FPU_DP & fpu_width:
-        macros[f'__PIC32_HAS_FPU64'] = ''
-    if _FPU_SP & fpu_width:
-        macros[f'__PIC32_HAS_FPU32'] = ''
+    cpu_name = devinfo.cpu
+    arch = _get_arch_from_cpu_name(cpu_name)
+    fpu_name = _get_fpu_name(cpu_name, fpu_width)
 
     macros['__PIC32_DEVICE_NAME'] = '"' + name + '"'
     macros['__PIC32_DEVICE_NAME__'] = '"' + name + '"'
@@ -225,9 +213,6 @@ def _get_target_macros(devinfo: DeviceInfo) -> dict[str, str]:
     macros['__PIC32_PIN_COUNT'] = str(devinfo.pincount)
     macros['__PIC32_PIN_COUNT__'] = str(devinfo.pincount)
 
-    cpu_name = devinfo.cpu
-    arch = _get_arch_from_cpu_name(cpu_name)
-    fpu_name = _get_fpu_name(arch, fpu_width)
     macros['__PIC32_CPU_NAME'] = '"' + cpu_name + '"'
     macros['__PIC32_CPU_NAME__'] = '"' + cpu_name + '"'
     macros['__PIC32_FPU_NAME'] = '"' + fpu_name + '"'
@@ -235,15 +220,35 @@ def _get_target_macros(devinfo: DeviceInfo) -> dict[str, str]:
     macros['__PIC32_ARCH'] = '"' + arch + '"'
     macros['__PIC32_ARCH__'] = '"' + arch + '"'
 
+    l1cache = _get_target_l1cache(devinfo)
+    if _L1CACHE_NONE != l1cache:
+        macros['__PIC32_HAS_L1CACHE'] = ''
+
+        if l1cache & _L1CACHE_DATA:
+            macros['__PIC32_HAS_L1DCACHE'] = ''
+        if l1cache & _L1CACHE_INST:
+            macros['__PIC32_HAS_L1ICACHE'] = ''
+    
+    if _FPU_DP & fpu_width:
+        macros['__PIC32_HAS_FPU64'] = ''
+    if _FPU_SP & fpu_width:
+        macros['__PIC32_HAS_FPU32'] = ''
+    if 'fullfp16' in fpu_name:
+        macros['__PIC32_HAS_FPU16'] = ''
+
     return macros
 
 
-def _get_arch_from_cpu_name(cpuname: str) -> str:
+def _get_arch_from_cpu_name(cpu_name: str) -> str:
     '''Get the Arm ISA version, such as "armv7em", from its CPU name, such as "cortex-m7".
     '''
     # Presume the "cortex-" part is there and remove it to make the matching a bit easier to read.
-    cpu = cpuname.lower().split('-', 1)[1]
+    cpu = cpu_name.lower().split('-', 1)[1]
 
+    # You can find the architecture name pretty easily by just looking up the CPU name online.
+    # Wikipedia has a page for Cortex-M with tables to show the archicture. What gets passed to
+    # the compiler is the architecture name without any dashes. For example, a Cortex-M7 will always
+    # be Armv7E-M and so you'd pass "armv7em" to the compiler.
     match cpu:
         case 'm0' | 'm0plus' | 'm1':
             return 'armv6m'
@@ -258,34 +263,51 @@ def _get_arch_from_cpu_name(cpuname: str) -> str:
         case 'm52' | 'm55' | 'm85':
             return 'armv8.1m.main'
         case _:
-            raise ValueError(f'Unknown CPU name {cpuname}!') 
+            raise ValueError(f'Unknown CPU name {cpu_name}!') 
 
 
-def _get_fpu_name(arch: str, fpu_width: int) -> str:
+def _get_fpu_name(cpu_name: str, fpu_width: int) -> str:
     '''Return the FPU extension name to be passed to the compiler or "none" if the device
     does not support an FPU.
     '''
     if _FPU_NONE == fpu_width:
         return 'none'
 
-    match arch:
-        case 'armv7em':
+    # Presume the "cortex-" part is there and remove it to make the matching a bit easier to read.
+    cpu = cpu_name.lower().split('-', 1)[1]
+
+    # Finding the FPU name can be tricky. Your best bet is to find the "Cortex-M__ Technical Reference
+    # Manual" and look up the FPU info in there. That will tell you if the FPU can support half-,
+    # single-, or double-precision math and the FPU version (ex: "FPv5"). Some CPUs can optionally
+    # choose from multiple FPU implementations. The Technical Reference Manual may also refer you
+    # to an Architecture Reference Manual for more info.
+    #
+    # The best way I've found for seeing what you can pass to the compiler is to look in LLVM's source
+    # code. The file "llvm/llvm/include/llvm/TargetParser/ARMTargetParser.def" has a list of FPU and
+    # CPU names you can use to figure out the name of the FPU for your device.
+    match cpu:
+        case 'm4':
+            if _FPU_DP & fpu_width:
+                raise ValueError(f'CPU {cpu_name} unexpectedly has a double-precision FPU!')
+            else:
+                return 'fpv4-sp-d16'
+        case 'm7':
             if _FPU_DP & fpu_width:
                 return 'fpv5-d16'
             else:
-                return 'fpv4-sp-d16'
-        case 'armv8m.main':
+                return 'fpv5-sp-d16'
+        case 'm33' | 'm35' | 'm35p':
             if _FPU_DP & fpu_width:
-                raise ValueError(f'Arch {arch} unexpectedly has a double-precision FPU!')
+                raise ValueError(f'CPU {cpu_name} unexpectedly has a double-precision FPU!')
             else:
                 return 'fpv5-sp-d16'
-        case 'armv8.1m.main':
+        case 'm52' | 'm55' | 'm85':
             if _FPU_DP & fpu_width:
                 return 'fp-armv8-fullfp16-d16'
             else:
-                raise ValueError(f'Arch {arch} unexpectedly has a single-precision FPU!')
+                return 'fp-armv8-fullfp16-sp-d16'
         case _:
-            raise ValueError(f'Arch {arch} unexpectedly has an FPU!')
+            raise ValueError(f'Arch {cpu_name} unexpectedly has an FPU!')
 
 
 def _get_mve_support(arch: str, fpu_width: int) -> str:
@@ -295,14 +317,15 @@ def _get_mve_support(arch: str, fpu_width: int) -> str:
     mve: str = ''
 
     # The first ISA to support MVE is ARMv8.1-M.main. Assume that further point releases, like v8.2,
-    # will also support it in the main profile
+    # will also support it in the main profile.
+    # This is not a separate compiler flag, but rather this is appended to the architecture name.
     if 'armv8.' in arch  and  'main' in arch:
         if _FPU_DP & fpu_width:
-            mve = 'mve.fp+fp.dp'
+            mve = '+mve.fp+fp.dp'
         elif _FPU_SP & fpu_width:
-            mve = 'mve.fp'
+            mve = '+mve.fp'
         else:
-            mve = 'mve'
+            mve = '+mve'
 
     return mve
 
