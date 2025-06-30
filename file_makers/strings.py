@@ -32,6 +32,7 @@ application, such as copyright strings.
 '''
 
 from . import version
+import datetime
 
 # If you edit this project, be sure to add your copyright here too so that it appears in the created
 # files. I followed this on Stack Exchange to figure out how I should add my name to an Apache
@@ -41,7 +42,7 @@ from . import version
 # Basically, just add "Copyright (c) <year>, <your name>" on a new line at the end of the list.
 #
 _this_copyright: list[str] = [
-    'Copyright (c) 2024, Jesse DeGuire',
+    f'Copyright (c) {datetime.date.today().year}, Jesse DeGuire',
 ]
 
 _this_git_location: str = 'https://github.com/jdeguire/pic32-device-file-maker'
