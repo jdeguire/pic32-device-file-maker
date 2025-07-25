@@ -233,7 +233,7 @@ def _get_peripheral_headers(peripherals: list[PeripheralGroup], prefix: str) -> 
         if not _peripheral_is_special(periph):
             name = periph.name.lower()
             id = periph.id.lower()
-            version = periph.version.lower()
+            version = periph.version.lower().replace(' ', '_')
             if version:
                 periph_str += f'#include "{prefix}/{name}_{id}_{version}.h"\n'
             else:

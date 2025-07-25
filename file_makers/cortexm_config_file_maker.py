@@ -34,7 +34,6 @@ options needed for the desired target.
 
 from pathlib import Path
 from device_info import *
-import os
 from . import strings
 import textwrap
 from typing import IO
@@ -138,9 +137,10 @@ def _get_common_options() -> str:
 def _get_target_arch_options(devinfo: DeviceInfo) -> str:
     '''Return a string containing the options specifying the target and its architecture.
     '''
-    arch_name: str = _get_arch_from_cpu_name(devinfo.cpu)
+    cpu_name: str = devinfo.cpu
+    arch_name: str = _get_arch_from_cpu_name(cpu_name)
     fpu_width: int = _get_fpu_width(devinfo)
-    fpu_name: str = _get_fpu_name(arch_name, fpu_width)
+    fpu_name: str = _get_fpu_name(cpu_name, fpu_width)
     mve_ext: str = _get_mve_support(arch_name, fpu_width)
 
     target_str: str = '-target arm-none-eabi\n'
