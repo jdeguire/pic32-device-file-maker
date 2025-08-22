@@ -244,13 +244,15 @@ def _get_bitfield_value_macros(macro_base_name: str, values: list[ParameterValue
     macros: str = ''
 
     for val in values:
-        macros += _get_basic_macro(f'    {macro_base_name}_{val.name}_Val',
+        valname = val.name.strip('_')
+        macros += _get_basic_macro(f'    {macro_base_name}_{valname}_Val',
                                    val.value + 'ul',
                                    val.caption)
 
     for val in values:
-        macros += _get_basic_macro(f'{macro_base_name}_{val.name}',
-                                   f'{macro_base_name}_{val.name}_Val << {macro_base_name}_Pos')
+        valname = val.name.strip('_')
+        macros += _get_basic_macro(f'{macro_base_name}_{valname}',
+                                   f'{macro_base_name}_{valname}_Val << {macro_base_name}_Pos')
 
     return macros
 
