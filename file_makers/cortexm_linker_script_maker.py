@@ -43,13 +43,10 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     '''Make a linker script for the given device assuming is a a PIC or SAM Cortex-M device.
     '''
 
-    # Write the header block with copyright info.
-    outfile.write('/*\n')
-    outfile.write(strings.get_generated_by_string(' * '))
-    outfile.write(' * \n')
-    outfile.write(strings.get_cmsis_apache_license(' * '))
-    outfile.write(' */\n\n')
-    
+    #
+    # First gather info on our memory spaces.
+    #
+
     unique_addr_spaces: list[DeviceAddressSpace] = _remove_overlapping_memory(devinfo.address_spaces)
 
     # Sort the now-not-overlapping memory regions by starting address.
@@ -62,6 +59,8 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     main_flash_region = _find_biggest_memory_region(unique_addr_spaces, 'flash', False)
     main_ram_region = _find_biggest_memory_region(unique_addr_spaces, 'ram', False)
     main_bootflash_region = _find_biggest_memory_region(unique_addr_spaces, 'flash', False, 'bfm')
+    itcm_region = _find_biggest_memory_region(unique_addr_spaces, 'ram', False, 'itcm')
+    dtcm_region = _find_biggest_memory_region(unique_addr_spaces, 'ram', False, 'dtcm')
 
     if not main_flash_region:
         # Some devices have only external flash, so check for that.
@@ -86,8 +85,16 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
             fuses_periph = periph
             break
 
-    # Now we can output the actual linker script bits.
     #
+    # Now we can start writing the linker script
+    #
+
+    # Header block with copyright info.
+    outfile.write('/*\n')
+    outfile.write(strings.get_generated_by_string(' * '))
+    outfile.write(' * \n')
+    outfile.write(strings.get_cmsis_apache_license(' * '))
+    outfile.write(' */\n\n')
 
     # MEMORY command
     outfile.write(_get_memory_symbols(main_flash_region, main_ram_region))
@@ -99,9 +106,18 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     outfile.write('}\n\nENTRY(Reset_Handler)')
     outfile.write('\n\n')
 
-    # SECTIONS command
+    # SECTIONS commands
+    #
     outfile.write('SECTIONS\n{\n')
-    outfile.write(_get_standard_SECTIONS(main_flash_region, main_ram_region, main_bootflash_region))
+    outfile.write(_get_standard_program_SECTIONS(main_flash_region, main_bootflash_region))
+
+    if itcm_region:
+        outfile.write(_get_tcm_data_SECTION(itcm_region))
+    if dtcm_region:
+        outfile.write(_get_tcm_data_SECTION(dtcm_region))
+
+    outfile.write(_get_standard_data_SECTIONS(main_flash_region, main_ram_region))
+
     if fuses_periph:
         outfile.write('\n    /* Device configuration fuses */')
         outfile.write(_get_fuse_SECTIONS(unique_addr_spaces, periph))
@@ -282,10 +298,9 @@ def _get_fuse_MEMORY(addr_spaces: list[DeviceAddressSpace],
     return memory_cmd
 
 
-def _get_standard_SECTIONS(main_flash_region: DeviceMemoryRegion,
-                           main_ram_region: DeviceMemoryRegion,
-                           main_bootflash_region: DeviceMemoryRegion | None) -> str:
-    '''Return the standard sections that would be in a SECTIONS command for Arm linker scripts.
+def _get_standard_program_SECTIONS(main_flash_region: DeviceMemoryRegion,
+                                   main_bootflash_region: DeviceMemoryRegion | None) -> str:
+    '''Return the standard program sections that would be in a SECTIONS command for Arm linker scripts.
      
     The SECTIONS command indicates how object file sections will map into the memory regions from
     the MEMORY command. The names of the program flash, boot flash, and RAM memory regions are not
@@ -296,7 +311,6 @@ def _get_standard_SECTIONS(main_flash_region: DeviceMemoryRegion,
         vectors_region = main_bootflash_region.name.lower()
 
     progflash_name: str = main_flash_region.name.lower()
-    ram_name: str = main_ram_region.name.lower()
 
     sections_cmd: str = f'''
         .vectors :
@@ -377,6 +391,50 @@ def _get_standard_SECTIONS(main_flash_region: DeviceMemoryRegion,
 
         PROVIDE(__etext = LOADADDR(.data));
 
+        '''
+
+    sections_cmd = textwrap.dedent(sections_cmd)
+    return textwrap.indent(sections_cmd, '    ')
+
+
+def _get_tcm_data_SECTION(tcm_region: DeviceMemoryRegion) -> str:
+    '''Return a section used for the Tightly-Coupled Memory feature some Arm devices have.
+    '''
+    if 'itcm' in tcm_region.name.lower():
+        section_name: str = 'itcm'
+    elif 'dtcm' in tcm_region.name.lower():
+        section_name: str = 'dtcm'
+    else:
+        raise ValueError(f'Unrecognized TCM section name {tcm_region.name}')
+
+    section_cmd: str = f'''
+        .{section_name} : ALIGN(4)
+        {{
+            *(.{section_name})
+            *(.{section_name}.*)
+        }} > {tcm_region.name}
+
+        PROVIDE(__{section_name}_start = ADDR(.{section_name}));
+        PROVIDE(__{section_name}_end = SIZEOF(.{section_name}));
+        ASSERT(SIZEOF(.{section_name}) <= 0x{tcm_region.size:X})
+        '''
+
+    section_cmd = textwrap.dedent(section_cmd)
+    return textwrap.indent(section_cmd, '    ')
+
+
+def _get_standard_data_SECTIONS(main_flash_region: DeviceMemoryRegion,
+                                main_ram_region: DeviceMemoryRegion) -> str:
+    '''Return the standard data sections that would be in a SECTIONS command for Arm linker scripts.
+     
+    The SECTIONS command indicates how object file sections will map into the memory regions from
+    the MEMORY command. The names of the program flash, boot flash, and RAM memory regions are not
+    consistent in the ATDF files for different devices, so the caller will need to provide those.
+    '''
+    progflash_name: str = main_flash_region.name.lower()
+    ram_name: str = main_ram_region.name.lower()
+
+    sections_cmd: str = f'''
         .data : ALIGN(4)
         {{
             *(vtable)
@@ -501,6 +559,7 @@ def _get_standard_SECTIONS(main_flash_region: DeviceMemoryRegion,
 
         /* Check if data + heap + stack exceeds RAM limit */
         ASSERT(__StackLimit >= __HeapLimit, "RAM region overflowed with stack")
+
         '''
 
     sections_cmd = textwrap.dedent(sections_cmd)

@@ -264,7 +264,7 @@ def _get_peripheral_address_macros(peripherals: list[PeripheralGroup],
             for group_ref in instance.reg_group_refs:
                 base_macro_name = group_ref.instance_name.upper() + '_REGS_BASE'
                 decl_macro_name = group_ref.instance_name.upper() + '_REGS'
-                macro_type = group_ref.module_name.lower() + '_regs_t'
+                macro_type = group_ref.module_name.lower() + '_registers_t'
                 macro_addr = (group_ref.offset + 
                               _find_start_of_address_space(address_spaces, group_ref.addr_space))
 
@@ -273,7 +273,7 @@ def _get_peripheral_address_macros(peripherals: list[PeripheralGroup],
                 decl_macros_list.append(decl_macro_name)
 
         if decl_macros_list:
-            array_type = periph.name.lower() + '_regs_t*'
+            array_type = periph.name.lower() + '_registers_t*'
             array_name = periph.name.upper() + 'n_REGS[]'
             array_decl = f'static volatile __attribute__((unused)) {array_type} {array_name}'
             array_defs += f'{array_decl:<72} = {{{', '.join(decl_macros_list)}}};\n'

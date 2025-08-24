@@ -373,10 +373,10 @@ def _get_register_struct(periph_name: str, group: RegisterGroup, mode: str = '')
 def _get_base_groupdef_name(periph_name: str, group_name: str, mode_name: str = '') -> str:
     '''Return a base name to used used for the type name of the given group.
 
-    The resulting name will be "periph_mode_group_regs". If a mode is not provided (the default),
-    then the resulting name will be "periph_group_regs". The peripheral name is stripped from the
+    The resulting name will be "periph_mode_group_registers". If a mode is not provided (the default),
+    then the resulting name will be "periph_group_registers". The peripheral name is stripped from the
     start of the group name if needed. If the group name is then empty, the resulting name will be
-    "periph_mode_regs" or "periph_regs" if a mode is not provided. The name is all lower-case.
+    "periph_mode_registers" or "periph_registers" if a mode is not provided. The name is all lower-case.
 
     Fuses are a special case and will return "cfg_" followed by the group name in lower case.
     '''
@@ -393,7 +393,7 @@ def _get_base_groupdef_name(periph_name: str, group_name: str, mode_name: str = 
         if mode_name:
             mode_name = '_' + mode_name.lower()
 
-        return f'{periph_name.lower()}{mode_name}{group_name}_regs'.replace('__', '_')
+        return f'{periph_name.lower()}{mode_name}{group_name}_registers'.replace('__', '_')
 
 
 def _get_reg_type_from_size(size: int) -> str:
