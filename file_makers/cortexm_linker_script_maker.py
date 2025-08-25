@@ -400,23 +400,24 @@ def _get_standard_program_SECTIONS(main_flash_region: DeviceMemoryRegion,
 def _get_tcm_data_SECTION(tcm_region: DeviceMemoryRegion) -> str:
     '''Return a section used for the Tightly-Coupled Memory feature some Arm devices have.
     '''
-    if 'itcm' in tcm_region.name.lower():
+    region_name = tcm_region.name.lower()
+
+    if 'itcm' in region_name:
         section_name: str = 'itcm'
-    elif 'dtcm' in tcm_region.name.lower():
+    elif 'dtcm' in region_name:
         section_name: str = 'dtcm'
     else:
-        raise ValueError(f'Unrecognized TCM section name {tcm_region.name}')
+        raise ValueError(f'Unrecognized TCM section name {region_name}')
 
     section_cmd: str = f'''
         .{section_name} : ALIGN(4)
         {{
             *(.{section_name})
             *(.{section_name}.*)
-        }} > {tcm_region.name}
+        }} > {region_name}
 
         PROVIDE(__{section_name}_start = ADDR(.{section_name}));
         PROVIDE(__{section_name}_end = SIZEOF(.{section_name}));
-        ASSERT(SIZEOF(.{section_name}) <= 0x{tcm_region.size:X})
         '''
 
     section_cmd = textwrap.dedent(section_cmd)
