@@ -97,3 +97,14 @@ The files created by this app are covered under the Apache 2.0 license. A copy o
 output along with the generated files in a LICENSE file at the top level of the output directory.
 The Apache license is used because that is what Arm's CMSIS framework uses and many of the files
 created by this app are based on examples provided in CMSIS.
+
+## Trademarks
+This project and the similarly-named ones make references to "PIC32", "SAM", "XC32", and "MPLAB"
+products from Microchip Technology. Those names are trademarks or registered trademarks of Microchip
+Technology.
+
+These project also refer to "Arm", "ARM", "Cortex", and "CMSIS", which are all trademarks of Arm
+Limited.
+
+These projects are all independent efforts not affiliated with, endorsed, sponsored, or otherwise
+approved by Microchip Technology nor Arm Limited.
