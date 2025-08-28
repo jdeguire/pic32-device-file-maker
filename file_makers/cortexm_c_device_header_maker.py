@@ -208,6 +208,8 @@ def _get_memory_region_macros(address_spaces: list[DeviceAddressSpace]) -> str:
             base = addr_space.start_addr + mem_region.start_addr
             base_macro_name = mem_region.name.upper() + '_BASE'
             region_str += f'#define {base_macro_name:<32} (0x{base:08X}ul)\n'
+            addr_macro_name = mem_region.name.upper() + '_ADDR'
+            region_str += f'#define {addr_macro_name:<32} (0x{base:08X}ul)\n'
 
             size = mem_region.size
             size_macro_name = mem_region.name.upper() + '_SIZE'
