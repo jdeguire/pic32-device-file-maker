@@ -417,7 +417,7 @@ def _get_tcm_data_SECTION(tcm_region: DeviceMemoryRegion) -> str:
         }} > {region_name}
 
         PROVIDE(__{section_name}_start = ADDR(.{section_name}));
-        PROVIDE(__{section_name}_end = SIZEOF(.{section_name}));
+        PROVIDE(__{section_name}_end = ADDR(.{section_name}) + SIZEOF(.{section_name}));
         '''
 
     section_cmd = textwrap.dedent(section_cmd)
