@@ -158,11 +158,13 @@ def _get_target_arch_options(devinfo: DeviceInfo) -> str:
     else:
         abi_str = '-mfloat-abi=hard\n'
 
+    tune_str : str = f'-mtune={cpu_name}\n'
+
     cmse_str: str = ''
     if _has_cmse_extension(arch_name):
         cmse_str = '-mcmse\n'
 
-    return target_str + arch_str + fpu_str + abi_str + cmse_str
+    return target_str + arch_str + fpu_str + abi_str + tune_str + cmse_str
 
 
 def _get_target_macros(devinfo: DeviceInfo) -> dict[str, str]:

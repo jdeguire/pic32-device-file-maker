@@ -386,8 +386,9 @@ def _get_reset_handler() -> str:
            */
         void __attribute((noreturn, section(".reset"))) Reset_Handler(void)
         {
-            /* Initialize the process stack pointer. The main stack pointer is initialized by the 
-               CPU on reset by reading the first entry in the vector table. */
+            /* Initialize the stack pointers. MSP is initialized by the CPU on reset from the first entry
+               in the vector table, but do it here in case this app was jumped-to from a bootloader. */
+            __set_MSP((uint32_t)(&__INITIAL_SP));
             __set_PSP((uint32_t)(&__INITIAL_SP));
 
         #if (__ARM_ARCH >= 8)

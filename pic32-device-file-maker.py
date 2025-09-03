@@ -240,8 +240,8 @@ if '__main__' == __name__:
     if os.path.exists(args.output_dir):
         shutil.rmtree(args.output_dir)
 
-    lib_proc_prefix = args.output_dir / 'cortex-m' / 'proc'
-    include_proc_prefix = args.output_dir / 'cortex-m' / 'include' / 'proc'
+    lib_proc_prefix = args.output_dir / 'arm' / 'proc'
+    include_proc_prefix = args.output_dir / 'arm' / 'include' / 'proc'
 
     peripheral_header_pathname = 'periph'
     fuses_header_pathname = 'fuses'
@@ -346,7 +346,7 @@ if '__main__' == __name__:
     # Make the all-encompassing processor header file.
     #
     print('Creating big processor header')
-    big_proc_header_path = args.output_dir / 'cortex-m' / 'include' / 'which_pic32.h'
+    big_proc_header_path = args.output_dir / 'arm' / 'include' / 'which_pic32.h'
     with open_for_writing(big_proc_header_path) as hdr:
         all_devices_header_maker.run(hdr, big_proc_header_path.stem, device_families)
 
