@@ -50,7 +50,7 @@ _L1CACHE_INST = 2
 
 def run(devinfo: DeviceInfo, outfile: IO[str], default_ld_path: Path, extra_macros: list[str]) -> None:
     '''Make a Clang target configuration file for the given device assuming it is a PIC or SAM
-    Cortex-M device.
+    ARM device.
     '''
     outfile.write(_get_file_prologue())
     outfile.write(_get_common_options())
@@ -102,7 +102,7 @@ def _get_file_prologue() -> str:
     return prologue
 
 def _get_common_options() -> str:
-    '''Return a string with options common to all Cortex-M devices, such as sysroot and include
+    '''Return a string with options common to all ARM devices, such as sysroot and include
     directories.
     '''
     return textwrap.dedent('''
@@ -115,13 +115,13 @@ def _get_common_options() -> str:
         # Specify a sysroot so hopefully Clang will look only in its install location rather than
         # trying to find headers and stuff in actual system directories. This is also where
         # "multilib.yaml" is located.
-        --sysroot="<CFGDIR>/../cortex-m"
+        --sysroot="<CFGDIR>/../arm"
 
         # Specify system include directories. The C++ includes need to be specified first beucase
         # they use #include_next to redirect to the C headers as needed. The C++ headers check
         # for __cplusplus to be defined and so this should be fine for C-only projects.
-        -isystem "<CFGDIR>/../cortex-m/include/c++/v1"
-        -isystem "<CFGDIR>/../cortex-m/include"
+        -isystem "<CFGDIR>/../arm/include/c++/v1"
+        -isystem "<CFGDIR>/../arm/include"
         -isystem "<CFGDIR>/../CMSIS/Core/Include"
 
         # Ensure we are using the linker and runtimes bundled with this toolchain. Clang can try to
@@ -237,6 +237,14 @@ def _get_target_macros(devinfo: DeviceInfo) -> dict[str, str]:
         macros['__PIC32_HAS_FPU32'] = ''
     if 'fullfp16' in fpu_name:
         macros['__PIC32_HAS_FPU16'] = ''
+    if 'neon' in fpu_name:
+        macros['__PIC32_HAS_SIMD'] = ''
+        macros['__PIC32_HAS_NEON'] = ''
+    if 'mve' in _get_mve_support(arch, fpu_width):
+        macros['__PIC32_HAS_SIMD'] = ''
+        macros['__PIC32_HAS_MVE'] = ''
+    if _has_cmse_extension(arch):
+        macros['__PIC32_HAS_CMSE'] = ''
 
     return macros
 
@@ -248,9 +256,9 @@ def _get_arch_from_cpu_name(cpu_name: str) -> str:
     cpu = cpu_name.lower().split('-', 1)[1]
 
     # You can find the architecture name pretty easily by just looking up the CPU name online.
-    # Wikipedia has a page for Cortex-M with tables to show the archicture. What gets passed to
-    # the compiler is the architecture name without any dashes. For example, a Cortex-M7 will always
-    # be Armv7E-M and so you'd pass "armv7em" to the compiler.
+    # Wikipedia has a pages for different ARM CPUs with tables to show the archicture. What gets 
+    # passed to the compiler is the architecture name without any dashes. For example, a Cortex-M7
+    # will always be Armv7E-M and so you'd pass "armv7em" to the compiler.
     match cpu:
         case 'm0' | 'm0plus' | 'm1':
             return 'armv6m'
@@ -278,8 +286,8 @@ def _get_fpu_name(cpu_name: str, fpu_width: int) -> str:
     # Presume the "cortex-" part is there and remove it to make the matching a bit easier to read.
     cpu = cpu_name.lower().split('-', 1)[1]
 
-    # Finding the FPU name can be tricky. Your best bet is to find the "Cortex-M__ Technical Reference
-    # Manual" and look up the FPU info in there. That will tell you if the FPU can support half-,
+    # Finding the FPU name can be tricky. Your best bet is to find the "Technical Reference Manual"
+    # for your CPU and look up the FPU info in there. That will tell you if the FPU can support half-,
     # single-, or double-precision math and the FPU version (ex: "FPv5"). Some CPUs can optionally
     # choose from multiple FPU implementations. The Technical Reference Manual may also refer you
     # to an Architecture Reference Manual for more info.
