@@ -76,6 +76,9 @@ def _get_file_prologue(proc_header_name: str) -> str:
     header += strings.get_generated_by_string(' * ')
     header += ' * \n'
     header += strings.get_cmsis_apache_license(' * ')
+    header += ' *\n'
+    header += ' * Some portions were also adapted from startup code provided with MPLAB(R) XC32,\n'
+    header += ' * Copyright (c) 2025 Microchip Technology Inc.\n'
     header += ' */\n'
 
     decls: str = f'''
@@ -104,6 +107,14 @@ def _get_file_prologue(proc_header_name: str) -> str:
            */
         extern void __attribute__((weak)) _on_reset(void);
         extern void __attribute__((weak)) _on_bootstrap(void);
+
+        /* Define this to run code upon entering the default interrupt handler. Any interrupts you do
+           not create handlers for call the default handler. Trying to define Default_Handler() yourself
+           like with other interrupt or fault handlers does not seem to work, so define this function
+           instead as a workaround. Return non-zero if the default interrupt handler should return.
+           Otherwise, it will spin forever after this function returns.
+           */
+        extern int __attribute__((weak)) _on_default_handler(void);
         '''
 
     return header + textwrap.dedent(decls)
@@ -126,8 +137,13 @@ def _get_default_handlers() -> str:
         }
 
         // Default Handler For Other Exceptions and Interrupts
-        void __attribute__((noreturn, weak)) Default_Handler(void)
+        void __attribute__((weak)) Default_Handler(void)
         {
+            if(_on_default_handler  &&  _on_default_handler())
+            {
+                return;
+            }
+
         #ifdef __DEBUG
             __BKPT(0);
         #endif
