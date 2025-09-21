@@ -145,55 +145,27 @@ def open_for_writing(outfile: Path):
     return open(outfile, 'w', encoding='utf-8', newline='\n')
 
 
-def remove_file_tag(file_line: str, tagname: str) -> tuple[str, str]:
-    '''Remove a tag, such as {LICENSE: ... } and {DEST: ... } from the given line, return the rest
-    of the contents within the braces after being trimmed of whitespace and the stuff that was 
-    before the tag.
-    '''
-    tag = file_line.split(f'{{{tagname}:', 1)     # Split start of tag
-    tag[1] = tag[1].split('}', 1)[0]            # Remove '}' from end of tag
-    tag[1] = tag[1].strip()                     # Removing leading and trailing whitespace
-    return (tag[1], tag[0])
 
-
-def copy_premade_files(src_dir: str, dest_dir: str) -> None:
+def copy_premade_files(args: argparse.Namespace) -> None:
     '''Copy the premade files from the premade src directory to their appropriate destinations.
 
-    This currently will not go into subdirectories. 
-    
-    Each premade file can optionally have tags at the top of them to indicate some extra info. The
-    "{DEST:...}" tag indicates the destination and the "{LICENSE:...}" tag indicates that a license
-    needs to be added to that location. There can be only one tag per line.
+    This contains a hardcoded list of files and directories to copy, so you will need to update this
+    function if you change what is in the 'premade' subdirectory.
     '''
-    file_list: list[str] = [f for f in os.listdir(src_dir) if os.path.isfile(os.path.join(src_dir, f))]
+    our_path = Path(os.path.abspath(os.path.dirname(__file__)))
+    premade_src = our_path / 'premade'
+    premade_dst = args.output_dir
 
-    for f in file_list:
-        contents = ''
-        file_dest = f
+    file_paths: dict[Path, Path] = {
+        premade_src / 'apache_license.txt': premade_dst / 'LICENSE',
+        premade_src / 'arm_legacy/': premade_dst / 'arm' / 'include' / 'arm_legacy/'
+    }
 
-        with open(os.path.join(src_dir, f), 'r', encoding='utf-8') as f_in:
-            for l in f_in:
-                if '{DEST:' in l:
-                    file_dest, _ = remove_file_tag(l, 'DEST')
-                elif '{LICENSE:' in l:
-                    license_type, prefix = remove_file_tag(l, 'LICENSE')
-                    prefix += ' '
-
-                    contents += strings.get_generated_by_string(prefix)
-                    contents += prefix + '\n'
-                    if 'NON-CMSIS' in license_type:
-                        contents += strings.get_non_cmsis_apache_license(prefix)
-                    elif 'CMSIS' in license_type:
-                        contents += strings.get_cmsis_apache_license(prefix)
-                    contents += prefix + '\n'
-                else:
-                    contents += l
-
-        outpath = os.path.normpath(dest_dir + '/' + file_dest)
-        os.makedirs(os.path.dirname(outpath), exist_ok = True)
-
-        with open(outpath, 'w', encoding='utf-8', newline='\n') as f_out:
-            f_out.write(contents)
+    for src, dst in file_paths.items():
+        if src.is_dir():
+            shutil.copytree(src, dst, dirs_exist_ok = True)
+        else:
+            shutil.copy(src, dst)
 
 
 def get_command_line_arguments() -> argparse.Namespace:
@@ -352,10 +324,7 @@ if '__main__' == __name__:
 
     # Copy the premade files to their proper destinations.
     #
-    our_path = Path(os.path.abspath(os.path.dirname(__file__)))
-    premade_src = our_path / 'premade'
-    premade_dst = args.output_dir
     print(f'Copying premade files')
-    copy_premade_files(premade_src.as_posix(), premade_dst.as_posix())
+    copy_premade_files(args)
 
     exit(0)
