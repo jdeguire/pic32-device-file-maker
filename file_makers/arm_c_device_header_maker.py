@@ -25,7 +25,7 @@
 # IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
 # OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-'''cortexm_c_device_header_maker.py
+'''arm_c_device_header_maker.py
 
 Contains a single public function to make a C device-specific header file for a single Arm Cortex-M
 device. This is the header you would include in a project for your processor.

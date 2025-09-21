@@ -25,7 +25,7 @@
 # IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
 # OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-'''cortexm_c_periph_header_maker.py
+'''arm_c_periph_header_maker.py
 
 Contains a single public function to make a C peripheral header file for a single Arm Cortex-M
 device. These are included by the device-specific header files and contain the definitions for the

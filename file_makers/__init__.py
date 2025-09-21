@@ -40,21 +40,21 @@
 # no harm in just explicity naming the modules. Notice that the ".py" extension is NOT included.
 
 from . import all_devices_header_maker
-from . import cortexm_c_device_header_maker
-from . import cortexm_c_periph_header_maker
-from . import cortexm_c_startup_maker
-from . import cortexm_config_file_maker
-from . import cortexm_linker_script_maker
+from . import arm_c_device_header_maker
+from . import arm_c_periph_header_maker
+from . import arm_mcu_c_startup_maker
+from . import arm_config_file_maker
+from . import arm_mcu_linker_script_maker
 from . import strings
 from . import version
 
 __all__ = [
     'all_devices_header_maker',
-    'cortexm_c_device_header_maker',
-    'cortexm_c_periph_header_maker',
-    'cortexm_c_startup_maker',
-    'cortexm_config_file_maker',
-    'cortexm_linker_script_maker',
+    'arm_c_device_header_maker',
+    'arm_c_periph_header_maker',
+    'arm_mcu_c_startup_maker',
+    'arm_config_file_maker',
+    'arm_mcu_linker_script_maker',
     'strings',
     'version'
 ]

@@ -25,7 +25,7 @@
 # IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
 # OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-'''cortexm_config_file_maker.py
+'''arm_config_file_maker.py
 
 Contains a single public function to make a target configuration file for a single Arm Cortex-M
 device. A configuration file would be passed to Clang using the "-config=" option to provide it the

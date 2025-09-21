@@ -88,10 +88,6 @@ def get_atdf_paths_from_dir(packs_dir: str) -> list[Path]:
             if name.lower().startswith('pic32m')  or  name.lower().startswith('32m'):
                 continue
 
-            # We also are not supporting Cortex-A devices, so filter out the "SAMA" devices.
-            if name.lower().startswith('atsama')  or  name.lower().startswith('sama'):
-                continue
-
             # Overwrite previous path if one was already found for this device. This avoids
             # duplicate entries when multiple pack versions are installed.
             atdf_paths[name] = p
@@ -227,22 +223,23 @@ if '__main__' == __name__:
     # Make the files specific to each device and collect their perpiherals so we can make
     # those later. 
     for devinfo in devinfo_list:
-        if not devinfo.cpu.startswith('cortex-m'):
+        if not (devinfo.cpu.startswith('cortex')  or  devinfo.cpu.startswith('arm')):
             continue
 
         print(f'Creating files for device {devinfo.name} ({devinfo.cpu})')
 
         # Linker script
         #
-        ld_path = lib_proc_prefix / devinfo.name.lower() / 'default.ld'
-        with open_for_writing(ld_path) as ld:
-            cortexm_linker_script_maker.run(devinfo, ld)
+        if devinfo.cpu.startswith('cortex-m'):
+            ld_path = lib_proc_prefix / devinfo.name.lower() / 'default.ld'
+            with open_for_writing(ld_path) as ld:
+                arm_mcu_linker_script_maker.run(devinfo, ld)
 
         # C device-specifc header file
         #
         dev_header_path = include_proc_prefix / (devinfo.name.lower() + '.h')
         with open_for_writing(dev_header_path) as hdr:
-            cortexm_c_device_header_maker.run(devinfo, hdr, peripheral_header_pathname, 
+            arm_c_device_header_maker.run(devinfo, hdr, peripheral_header_pathname, 
                                               fuses_header_pathname)
 
         # Make a dict of peripherals we need to make. Doing this ensures we make each unique
@@ -258,7 +255,7 @@ if '__main__' == __name__:
                 fuses_header_path = (include_proc_prefix / fuses_header_pathname / (devinfo.name.lower() + '.h'))
                 with open_for_writing(fuses_header_path) as hdr:
                     basename = devinfo.name.lower() + '_fuses'
-                    cortexm_c_periph_header_maker.run(basename, periph, hdr)
+                    arm_c_periph_header_maker.run(basename, periph, hdr)
             elif periph.id  and  'system_ip' not in periph.id.lower():
                 name = periph.name.lower()
                 id = periph.id.lower()
@@ -274,17 +271,18 @@ if '__main__' == __name__:
 
         # C device startup file
         #
-        startup_src_path = lib_proc_prefix / devinfo.name.lower() / 'startup.c'
-        with open_for_writing(startup_src_path) as vec:
-            proc_header_name = 'which_pic32.h'
-            cortexm_c_startup_maker.run(proc_header_name, devinfo.interrupts, vec)
+        if devinfo.cpu.startswith('cortex-m'):
+            startup_src_path = lib_proc_prefix / devinfo.name.lower() / 'startup.c'
+            with open_for_writing(startup_src_path) as vec:
+                proc_header_name = 'which_pic32.h'
+                arm_mcu_c_startup_maker.run(proc_header_name, devinfo.interrupts, vec)
 
         # Clang configuration file
         #
         config_path = args.output_dir / 'config' / (devinfo.name.lower() + '.cfg')
         with open_for_writing(config_path) as cfg:
             default_ld_path = Path(os.path.relpath(ld_path, config_path.parent))
-            cortexm_config_file_maker.run(devinfo, cfg, default_ld_path, args.define_macro)
+            arm_config_file_maker.run(devinfo, cfg, default_ld_path, args.define_macro)
 
         # Gather device names and families we can use to make an all-encompassing processor header
         # file. That is, instead of including the individual processor header in your project, you
@@ -313,7 +311,7 @@ if '__main__' == __name__:
 
         periph_header_path = include_proc_prefix / peripheral_header_pathname / (periph_name + '.h')
         with open_for_writing(periph_header_path) as hdr:
-            cortexm_c_periph_header_maker.run(periph_name, periph_group, hdr)
+            arm_c_periph_header_maker.run(periph_name, periph_group, hdr)
 
     # Make the all-encompassing processor header file.
     #
