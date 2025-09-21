@@ -63,19 +63,24 @@ _apache_license: list[str] = [
 ]
 
 _arm_cmsis6_copyright: str = 'Copyright (c) 2009-2023 Arm Limited. All rights reserved.'
+_mchp_xc32_copyright: str = 'Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.'
 
 _arm_cmsis6_adapted_from: str = \
     'Copied and adapted from code in Arm CMSIS 6 (https://github.com/ARM-software/CMSIS_6).'
+_mchp_xc32_adapted_from: str = \
+    'Portions were adapted from device code provided by the Microchip MPLAB(R) XC32 toolchain.'
 
 
-
-def get_cmsis_apache_license(comment_prefix: str) -> str:
+def get_cmsis_apache_license(comment_prefix: str, include_mchp: bool = False) -> str:
     '''Return a string containing an Apache license and other copyright info for Arm's CMSIS.
 
     The argument is a string that will be prepended to every line of the output so that it is output
     as a comment in whatever language you are using. For example, you would use '// ' for C and C++.
     '''
     output: str = comment_prefix + _arm_cmsis6_copyright + '\n'
+
+    if include_mchp:
+        output += _mchp_xc32_copyright + '\n'
 
     for line in _this_copyright:
         output += comment_prefix + line + '\n'
@@ -88,6 +93,9 @@ def get_cmsis_apache_license(comment_prefix: str) -> str:
     output += comment_prefix + '\n'
 
     output += comment_prefix + _arm_cmsis6_adapted_from + '\n'
+
+    if include_mchp:
+        output += _mchp_xc32_adapted_from + '\n'
 
     return output
 
