@@ -66,7 +66,12 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: 
     outfile.write('\n\n')
 
     outfile.write('/* ----- CMSIS Core and Peripherals Header ----- */\n')
-    outfile.write('#include <core_c' + devinfo.cpu.split('-')[1].lower() + '.h>\n')
+    if devinfo.cpu.startswith('cortex'):
+        outfile.write('#include <core_c' + devinfo.cpu.split('-')[1].lower() + '.h>\n')
+    elif devinfo.cpu.startswith('arm'):
+        outfile.write('#include "../arm_legacy/core_arm_legacy.h"\n')
+    else:
+        raise ValueError(f'Unrecognized CPU name {devinfo.cpu}')
     outfile.write('\n\n')
 
     outfile.write('/* ----- Device Peripheral Headers ----- */\n')
@@ -112,7 +117,7 @@ def _get_file_prologue(devname: str) -> str:
     prologue += '/*\n'
     prologue += strings.get_generated_by_string(' * ')
     prologue += ' * \n'
-    prologue += strings.get_cmsis_apache_license(' * ')
+    prologue += strings.get_cmsis_license(' * ', strings.COPYRIGHT_CMSIS)
     prologue += ' */\n\n'
 
     # Include guard
@@ -323,7 +328,10 @@ def _get_device_fuse_declarations(fuse_periph: PeripheralGroup,
                         reg_addr = base_addr + member.offset + (4*i)
                         base_name = group_ref.instance_name + '_' + member.name
                         section_name = '.' + base_name.lower() + str(i)
-                        variable_name = 'CFG_' + base_name.upper() + str(i)
+                        variable_name = base_name.upper() + str(i)
+
+                        if not variable_name.startswith('FUSES_'):
+                            variable_name = 'FUSES_' + variable_name
 
                         addr_macro_str += f'#define {variable_name + '_BASE':<32} (0x{reg_addr:08X}ul)\n'
 
@@ -333,7 +341,10 @@ def _get_device_fuse_declarations(fuse_periph: PeripheralGroup,
                     reg_addr = base_addr + member.offset
                     base_name = group_ref.instance_name + '_' + member.name
                     section_name = '.' + base_name.lower()
-                    variable_name = 'CFG_' + base_name.upper()
+                    variable_name = base_name.upper()
+
+                    if not variable_name.startswith('FUSES_'):
+                        variable_name = 'FUSES_' + variable_name
 
                     addr_macro_str += f'#define {variable_name + '_BASE':<32} (0x{reg_addr:08X}ul)\n'
 

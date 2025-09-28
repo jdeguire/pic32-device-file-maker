@@ -75,10 +75,7 @@ def _get_file_prologue(proc_header_name: str) -> str:
     header += '/*\n'
     header += strings.get_generated_by_string(' * ')
     header += ' * \n'
-    header += strings.get_cmsis_apache_license(' * ', True)
-    header += ' *\n'
-    header += ' * Some portions were also adapted from startup code provided with MPLAB(R) XC32,\n'
-    header += ' * Copyright (c) 2025 Microchip Technology Inc.\n'
+    header += strings.get_cmsis_license(' * ', strings.COPYRIGHT_CMSIS | strings.COPYRIGHT_MCHP)
     header += ' */\n'
 
     decls: str = f'''

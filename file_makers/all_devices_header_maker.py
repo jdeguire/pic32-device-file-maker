@@ -47,7 +47,7 @@ def run(hdr: IO[str], basename: str, device_families: dict[str, list[str]]) -> N
     hdr.write('/*\n')
     hdr.write(strings.get_generated_by_string(' * '))
     hdr.write(' * \n')
-    hdr.write(strings.get_non_cmsis_apache_license(' * '))
+    hdr.write(strings.get_cmsis_license(' * '))
     hdr.write(' */\n\n')
 
     # Include guard

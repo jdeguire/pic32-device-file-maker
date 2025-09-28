@@ -53,7 +53,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str], default_ld_path: Path, extra_macr
     ARM device.
     '''
     outfile.write(_get_file_prologue())
-    outfile.write(_get_common_options())
+    outfile.write(_get_common_options(devinfo))
     outfile.write('\n# Base target arch options.\n')
     outfile.write(_get_target_arch_options(devinfo))
     outfile.write('\n')
@@ -96,16 +96,16 @@ def _get_file_prologue() -> str:
     # Write the header block with copyright info.
     prologue += strings.get_generated_by_string('# ')
     prologue += '# \n'
-    prologue += strings.get_non_cmsis_apache_license('# ')
+    prologue += strings.get_cmsis_license('# ')
     prologue += '# \n'
 
     return prologue
 
-def _get_common_options() -> str:
+def _get_common_options(devinfo: DeviceInfo) -> str:
     '''Return a string with options common to all ARM devices, such as sysroot and include
     directories.
     '''
-    return textwrap.dedent('''
+    common_opts = '''
         # The compiler is built with the build option CLANG_CONFIG_FILE_SYSTEM_DIR to tell Clang
         # where to look by default for these config files.
         # Clang supports "multilibs" to link against different libraries based on compiler options.
@@ -122,8 +122,12 @@ def _get_common_options() -> str:
         # for __cplusplus to be defined and so this should be fine for C-only projects.
         -isystem "<CFGDIR>/../arm/include/c++/v1"
         -isystem "<CFGDIR>/../arm/include"
-        -isystem "<CFGDIR>/../CMSIS/Core/Include"
+        '''
+    
+    if devinfo.cpu.startswith('cortex'):
+        common_opts += '-isystem "<CFGDIR>/../CMSIS/Core/Include"\n'
 
+    common_opts += '''
         # Ensure we are using the linker and runtimes bundled with this toolchain. Clang can try to
         # use the system runtime and linker, which we do not want. libc++ is statically linked
         # against libc++abi because there is no option like these to specify that.
@@ -131,7 +135,9 @@ def _get_common_options() -> str:
         -fuse-ld=lld
         -stdlib=libc++
         -unwindlib=libunwind
-        ''')
+        '''
+
+    return textwrap.dedent(common_opts)
 
 
 def _get_target_arch_options(devinfo: DeviceInfo) -> str:
@@ -140,7 +146,7 @@ def _get_target_arch_options(devinfo: DeviceInfo) -> str:
     cpu_name: str = devinfo.cpu
     arch_name: str = _get_arch_from_cpu_name(cpu_name)
     fpu_width: int = _get_fpu_width(devinfo)
-    fpu_name: str = _get_fpu_name(cpu_name, fpu_width)
+    fpu_name: str = _get_fpu_name(devinfo, fpu_width)
     mve_ext: str = _get_mve_support(arch_name, fpu_width)
 
     target_str: str = '-target arm-none-eabi\n'
@@ -207,7 +213,7 @@ def _get_target_macros(devinfo: DeviceInfo) -> dict[str, str]:
     fpu_width = _get_fpu_width(devinfo)
     cpu_name = devinfo.cpu
     arch = _get_arch_from_cpu_name(cpu_name)
-    fpu_name = _get_fpu_name(cpu_name, fpu_width)
+    fpu_name = _get_fpu_name(devinfo, fpu_width)
 
     macros['__PIC32_DEVICE_NAME'] = '"' + name + '"'
     macros['__PIC32_DEVICE_NAME__'] = '"' + name + '"'
@@ -252,72 +258,91 @@ def _get_target_macros(devinfo: DeviceInfo) -> dict[str, str]:
 def _get_arch_from_cpu_name(cpu_name: str) -> str:
     '''Get the Arm ISA version, such as "armv7em", from its CPU name, such as "cortex-m7".
     '''
-    # Presume the "cortex-" part is there and remove it to make the matching a bit easier to read.
-    cpu = cpu_name.lower().split('-', 1)[1]
 
-    # You can find the architecture name pretty easily by just looking up the CPU name online.
-    # Wikipedia has a pages for different ARM CPUs with tables to show the archicture. What gets 
-    # passed to the compiler is the architecture name without any dashes. For example, a Cortex-M7
-    # will always be Armv7E-M and so you'd pass "armv7em" to the compiler.
-    match cpu:
-        case 'm0' | 'm0plus' | 'm1':
-            return 'armv6m'
-        case 'm3':
-            return 'armv7m'
-        case 'm4' | 'm7':
-            return 'armv7em'
-        case 'm23':
-            return 'armv8m.base'
-        case 'm33' | 'm35' | 'm35p':
-            return 'armv8m.main'
-        case 'm52' | 'm55' | 'm85':
-            return 'armv8.1m.main'
-        case _:
-            raise ValueError(f'Unknown CPU name {cpu_name}!') 
+    if cpu_name.startswith('cortex'):
+        # Remove the "cortex-" part to make the matching a bit easier to read.
+        cpu = cpu_name[7:]
+
+        # You can find the architecture name pretty easily by just looking up the CPU name online.
+        # Wikipedia has a pages for different ARM CPUs with tables to show the archicture. What gets 
+        # passed to the compiler is the architecture name without any dashes. For example, a Cortex-M7
+        # will always be Armv7E-M and so you'd pass "armv7em" to the compiler.
+        match cpu:
+            case 'm0' | 'm0plus' | 'm1':
+                return 'armv6m'
+            case 'm3':
+                return 'armv7m'
+            case 'm4' | 'm7':
+                return 'armv7em'
+            case 'm23':
+                return 'armv8m.base'
+            case 'm33' | 'm35' | 'm35p':
+                return 'armv8m.main'
+            case 'm52' | 'm55' | 'm85':
+                return 'armv8.1m.main'
+            case 'a5' | 'a7':
+                return 'armv7a'
+            case _:
+                raise ValueError(f'Unknown CPU name {cpu_name}!') 
+    elif cpu_name == 'arm926ej-s':
+        return 'armv5te'
+    else:
+        raise ValueError(f'Unknown CPU name {cpu_name}!')
 
 
-def _get_fpu_name(cpu_name: str, fpu_width: int) -> str:
+def _get_fpu_name(devinfo: DeviceInfo, fpu_width: int) -> str:
     '''Return the FPU extension name to be passed to the compiler or "none" if the device
     does not support an FPU.
     '''
     if _FPU_NONE == fpu_width:
         return 'none'
 
-    # Presume the "cortex-" part is there and remove it to make the matching a bit easier to read.
-    cpu = cpu_name.lower().split('-', 1)[1]
+    if devinfo.cpu.startswith('cortex'):
+        # Remove the "cortex-" part to make the matching a bit easier to read.
+        cpu = devinfo.cpu[7:]
 
-    # Finding the FPU name can be tricky. Your best bet is to find the "Technical Reference Manual"
-    # for your CPU and look up the FPU info in there. That will tell you if the FPU can support half-,
-    # single-, or double-precision math and the FPU version (ex: "FPv5"). Some CPUs can optionally
-    # choose from multiple FPU implementations. The Technical Reference Manual may also refer you
-    # to an Architecture Reference Manual for more info.
-    #
-    # The best way I've found for seeing what you can pass to the compiler is to look in LLVM's source
-    # code. The file "llvm/llvm/include/llvm/TargetParser/ARMTargetParser.def" has a list of FPU and
-    # CPU names you can use to figure out the name of the FPU for your device.
-    match cpu:
-        case 'm4':
-            if _FPU_DP & fpu_width:
-                raise ValueError(f'CPU {cpu_name} unexpectedly has a double-precision FPU!')
-            else:
-                return 'fpv4-sp-d16'
-        case 'm7':
-            if _FPU_DP & fpu_width:
-                return 'fpv5-d16'
-            else:
-                return 'fpv5-sp-d16'
-        case 'm33' | 'm35' | 'm35p':
-            if _FPU_DP & fpu_width:
-                raise ValueError(f'CPU {cpu_name} unexpectedly has a double-precision FPU!')
-            else:
-                return 'fpv5-sp-d16'
-        case 'm52' | 'm55' | 'm85':
-            if _FPU_DP & fpu_width:
-                return 'fp-armv8-fullfp16-d16'
-            else:
-                return 'fp-armv8-fullfp16-sp-d16'
-        case _:
-            raise ValueError(f'Arch {cpu_name} unexpectedly has an FPU!')
+        # Finding the FPU name can be tricky. Your best bet is to find the "Technical Reference Manual"
+        # for your CPU and look up the FPU info in there. That will tell you if the FPU can support half-,
+        # single-, or double-precision math and the FPU version (ex: "FPv5"). Some CPUs can optionally
+        # choose from multiple FPU implementations. The Technical Reference Manual may also refer you
+        # to an Architecture Reference Manual for more info.
+        #
+        # The best way I've found for seeing what you can pass to the compiler is to look in LLVM's source
+        # code. The file "llvm/llvm/include/llvm/TargetParser/ARMTargetParser.def" has a list of FPU and
+        # CPU names you can use to figure out the name of the FPU for your device.
+        match cpu:
+            case 'm4':
+                if _FPU_DP & fpu_width:
+                    raise ValueError(f'CPU {devinfo.cpu} unexpectedly has a double-precision FPU!')
+                else:
+                    return 'fpv4-sp-d16'
+            case 'm7':
+                if _FPU_DP & fpu_width:
+                    return 'fpv5-d16'
+                else:
+                    return 'fpv5-sp-d16'
+            case 'm33' | 'm35' | 'm35p':
+                if _FPU_DP & fpu_width:
+                    raise ValueError(f'CPU {devinfo.cpu} unexpectedly has a double-precision FPU!')
+                else:
+                    return 'fpv5-sp-d16'
+            case 'm52' | 'm55' | 'm85':
+                if _FPU_DP & fpu_width:
+                    return 'fp-armv8-fullfp16-d16'
+                else:
+                    return 'fp-armv8-fullfp16-sp-d16'
+            case 'a5' | 'a7':
+                # This unfortunately depends on the device name.
+                if devinfo.name.upper().startswith('SAMA5D3'):
+                    return 'vfpv4-d16'
+                else:
+                    return 'neon-vfpv4'
+            case _:
+                raise ValueError(f'Arch {devinfo.cpu} unexpectedly has an FPU!')
+    elif devinfo.cpu == 'arm926ej-s':
+        return 'vfp'
+    else:
+        raise ValueError(f'Unknown CPU name {devinfo.cpu}!')
 
 
 def _get_mve_support(arch: str, fpu_width: int) -> str:
@@ -352,15 +377,20 @@ def _get_fpu_width(devinfo: DeviceInfo) -> int:
     This returns one of the _FPU_xxx values at the top of this file. The return value can be
     bitwise-ANDed with those value to check for support for different widths.
     '''
-    width: int = _FPU_NONE
+    if devinfo.cpu.startswith('cortex-a'):
+        # All Cortex-A devices so far have DP FPUs, but not all of the ATDF files
+        # properly indicate that.
+        return _FPU_SP | _FPU_DP
+    else:
+        width: int = _FPU_NONE
 
-    for param in devinfo.parameters:
-        if '__FPU_PRESENT' == param.name  and  0 != int(param.value):
-            width |= _FPU_SP
-        elif '__FPU_DP' == param.name  and  0 != int(param.value):
-            width |= _FPU_DP
+        for param in devinfo.parameters:
+            if '__FPU_PRESENT' == param.name  and  0 != int(param.value):
+                width |= _FPU_SP
+            elif '__FPU_DP' == param.name  and  0 != int(param.value):
+                width |= _FPU_DP
 
-    return width
+        return width
 
 
 def _get_target_l1cache(devinfo: DeviceInfo) -> int:
@@ -369,12 +399,16 @@ def _get_target_l1cache(devinfo: DeviceInfo) -> int:
     This returns one of the _L1CACHE_xxx values at the top of this file. The return value can be
     bitwise-ANDed with those value to check for the presence of the different L1 caches.
     '''
-    cache_type: int = _L1CACHE_NONE
+    if devinfo.cpu.startswith('cortex-m'):
+        cache_type: int = _L1CACHE_NONE
 
-    for param in devinfo.parameters:
-        if '__DCACHE_PRESENT' == param.name  and  0 != int(param.value):
-            cache_type |= _L1CACHE_DATA
-        elif '__ICACHE_PRESENT' == param.name  and  0 != int(param.value):
-            cache_type |= _L1CACHE_INST
+        for param in devinfo.parameters:
+            if '__DCACHE_PRESENT' == param.name  and  0 != int(param.value):
+                cache_type |= _L1CACHE_DATA
+            elif '__ICACHE_PRESENT' == param.name  and  0 != int(param.value):
+                cache_type |= _L1CACHE_INST
 
-    return cache_type
+        return cache_type
+    else:
+        # All MPUs so far have caches, but not all of the ATDF files properly indicate that.
+        return _L1CACHE_DATA | _L1CACHE_INST

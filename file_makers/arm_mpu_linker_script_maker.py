@@ -25,10 +25,11 @@
 # IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
 # OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-'''arm_mcu_linker_script_maker.py
+'''arm_mpu_linker_script_maker.py
 
-Contains a single public function to make a GNU linker script file for a single Arm Cortex-M device.
-This is based on the sample linker scripts found in Arm CMSIS 6.
+Contains a single public function to make a GNU linker script file for a single Arm Cortex-A or
+ARM MPU device. This is based on the sample linker scripts found in Arm CMSIS 6 and from a linker
+script provided with the Microchip XC32 toolchain.
 '''
 
 from device_info import *
@@ -39,7 +40,7 @@ from typing import IO
 
 
 def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
-    '''Make a linker script for the given device assuming is a a PIC or SAM Cortex-M device.
+    '''Make a linker script for the given device assuming is a a PIC or SAM MPU device
     '''
 
     #
@@ -53,26 +54,18 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     for addr_space in unique_addr_spaces:
         addr_space.mem_regions.sort(key=operator.attrgetter('start_addr'))
 
-    # Find our main memory regions for flash and RAM. For now, assume that boot flash regions
-    # have "bfm" in the name.
-    main_flash_region = _find_biggest_memory_region(unique_addr_spaces, 'flash', False)
-    main_ram_region = _find_biggest_memory_region(unique_addr_spaces, 'ram', False)
-    main_bootflash_region = _find_biggest_memory_region(unique_addr_spaces, 'flash', False, 'bfm')
-    itcm_region = _find_biggest_memory_region(unique_addr_spaces, 'ram', False, 'itcm')
-    dtcm_region = _find_biggest_memory_region(unique_addr_spaces, 'ram', False, 'dtcm')
+    # Find our main DDR memory region. The ATDF files are not on how these are named nor their
+    # attributes, so for now we will have to just look for known names.
+    main_ddr_region = (_find_region_by_name(unique_addr_spaces, 'ddr_cs', exact=True)       or
+                       _find_region_by_name(unique_addr_spaces, 'ebi_mpddr', exact=True)    or
+                       _find_region_by_name(unique_addr_spaces, 'ddr', exact=False))
+    if not main_ddr_region:
+        raise RuntimeError(f'Failed to find a DDR region for {devinfo.name}')
 
-    if not main_flash_region:
-        # Some devices have only external flash, so check for that.
-        main_flash_region = _find_biggest_memory_region(unique_addr_spaces, 'flash', True)
-        if not main_flash_region:
-            # Some devices have no flash, so use RAM.
-            main_flash_region = _find_biggest_memory_region(unique_addr_spaces, 'ram', False)
-
-    if not main_flash_region:
-        raise RuntimeError(f'Failed to find a program flash region for {devinfo.name}')
-    if not main_ram_region:
-        raise RuntimeError(f'Failed to find a RAM region for {devinfo.name}')
-    # Do not check for bootflash region because not all devices have boot flash.
+    main_sram_region = (_find_region_by_name(unique_addr_spaces, 'sram0', exact=True)       or
+                        _find_region_by_name(unique_addr_spaces, 'iram', exact=True))
+    if not main_sram_region:
+        raise RuntimeError(f'Failed to find an SRAM region for {devinfo.name}')
 
     # Look for a fuses peripheral.
     # Fuses are special because unlike other peripherals with their fixed locations, fuses
@@ -93,13 +86,14 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     outfile.write(strings.get_generated_by_string(' * '))
     outfile.write(' * \n')
     outfile.write(strings.get_cmsis_license(' * ', strings.COPYRIGHT_CMSIS))
+    outfile.write(' * \n')
+    outfile.write(strings.get_mchp_bsd_license(' * '))
     outfile.write(' */\n\n')
 
     # MEMORY command
-    outfile.write(_get_memory_symbols(main_flash_region, main_ram_region))
+    outfile.write(_get_memory_symbols())
     outfile.write('\n\nMEMORY\n{\n')
-    outfile.write(_get_MEMORY_regions(unique_addr_spaces, main_flash_region, main_ram_region,
-                                      main_bootflash_region))
+    outfile.write(_get_MEMORY_regions(unique_addr_spaces, main_ddr_region, main_sram_region))
     if fuses_periph:
         outfile.write(_get_fuse_MEMORY(unique_addr_spaces, fuses_periph))
     outfile.write('}\n\nENTRY(Reset_Handler)')
@@ -108,14 +102,8 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     # SECTIONS commands
     #
     outfile.write('SECTIONS\n{\n')
-    outfile.write(_get_standard_program_SECTIONS(main_flash_region, main_bootflash_region))
-
-    if itcm_region:
-        outfile.write(_get_tcm_data_SECTION(itcm_region))
-    if dtcm_region:
-        outfile.write(_get_tcm_data_SECTION(dtcm_region))
-
-    outfile.write(_get_standard_data_SECTIONS(main_flash_region, main_ram_region))
+    outfile.write(_get_standard_program_SECTIONS(main_ddr_region, main_sram_region))
+    outfile.write(_get_standard_data_SECTIONS(main_ddr_region))
 
     if fuses_periph:
         outfile.write('\n    /* Device configuration fuses */')
@@ -171,71 +159,56 @@ def _remove_overlapping_memory(address_spaces: list[DeviceAddressSpace]) -> list
     return new_spaces
 
 
-def _find_biggest_memory_region(address_spaces: list[DeviceAddressSpace],
-                                type: str,
-                                is_external: bool,
-                                partial_name: str = '') -> DeviceMemoryRegion | None:
-    '''Find and return the largest memory region of the given type (flash, ram, io, etc.).
+def _find_region_by_name(address_spaces: list[DeviceAddressSpace],
+                         name: str,
+                         exact: bool) -> DeviceMemoryRegion | None:
+    '''Find and return the first region available with the given name.
 
-    Set 'is_external' to False to skip over regions marked as external or True to look only for
-    external regions. Use the 'partial_name' parameter to further filter regions to only ones
-    containing the given string in their name. This match is not case sensitive. This will return
-    a copy of the region with the starting address of the containing address space added to the
-    found region. This will return None if a region of the given type cannot be found.
+    The name is not case-sensitive. If 'exact' is True, then the region name must match the given
+    name exactly. Otherwise, this will return the first region containing the name.
     '''
-    biggest: DeviceMemoryRegion | None = None
+    name = name.lower()
 
     for addr_space in address_spaces:
         for region in addr_space.mem_regions:
-            if region.external != is_external  or  type != region.type.lower():
-                continue
+            region_name = region.name.lower()
 
-            if partial_name  and  partial_name.lower() not in region.name.lower():
-                continue
-
-            if not biggest or region.size > biggest.size:
+            if (not exact  and  name in region_name)  or  name == region_name:
                 start = addr_space.start_addr + region.start_addr
-                biggest = DeviceMemoryRegion(name = region.name,
-                                                start_addr = start,
-                                                size = region.size,
-                                                type = region.type,
-                                                page_size = region.page_size,
-                                                external = region.external)
+                return DeviceMemoryRegion(name = region.name,
+                                          start_addr = start,
+                                          size = region.size,
+                                          type = region.type,
+                                          page_size = region.page_size,
+                                          external = region.external)
 
-    return biggest
+    return None    
 
-
-def _get_memory_symbols(main_flash_region: DeviceMemoryRegion,
-                        main_ram_region: DeviceMemoryRegion) -> str:
+def _get_memory_symbols() -> str:
     '''Return a set of linker symbols giving the start and size of ROM, RAM, and any other useful
     tidbits.
     '''
     symbol_str: str = f'''
-        /* Internal flash base address and size in bytes. */
-        __ROM_BASE = 0x{main_flash_region.start_addr:08X};
-        __ROM_SIZE = 0x{main_flash_region.size:08X};
-
-        /* Internal RAM base address and size in bytes. */
-        __RAM_BASE = 0x{main_ram_region.start_addr:08X};
-        __RAM_SIZE = 0x{main_ram_region.size:08X};
-
         /* Stack and heap configuration. 
            Modify these using the --defsym option to the linker. */
-        PROVIDE(__STACK_SIZE = 0x00000400);
-        PROVIDE(__HEAP_SIZE  = 0x00000C00);
+        PROVIDE(__STACK_SIZE = 0x10000);
+        PROVIDE(__FIQ_STACK_SIZE = 0x1000);
+        PROVIDE(__IRQ_STACK_SIZE = 0x1000);
+        PROVIDE(__SVC_STACK_SIZE = 0x1000);
+        PROVIDE(__ABT_STACK_SIZE = 0x1000);
+        PROVIDE(__UND_STACK_SIZE = 0x1000);
+        __ALL_STACKS_SIZE = (__STACK_SIZE + __FIQ_STACK_SIZE + __IRQ_STACK_SIZE + __SVC_STACK_SIZE +
+                             __ABT_STACK_SIZE + __UND_STACK_SIZE);
 
-        /* ARMv8-M stack sealing:
-           To use ARMv8-M stack sealing set __STACKSEAL_SIZE to 8 otherwise keep 0. */
-        __STACKSEAL_SIZE = 0;
+        PROVIDE(__HEAP_SIZE  = 0x10000);
         '''
 
     return textwrap.dedent(symbol_str)
 
 
 def _get_MEMORY_regions(address_spaces: list[DeviceAddressSpace],
-                        main_flash_region: DeviceMemoryRegion,
-                        main_ram_region: DeviceMemoryRegion,
-                        main_bootflash_region: DeviceMemoryRegion | None) -> str:
+                        main_ddr_region: DeviceMemoryRegion,
+                        main_sram_region: DeviceMemoryRegion) -> str:
     '''Return the memory regions on the device formatted for the MEMORY linker script command.
     '''
     memory_cmd: str = ''
@@ -248,12 +221,10 @@ def _get_MEMORY_regions(address_spaces: list[DeviceAddressSpace],
 
             # We need to add some region attributes to the main flash and RAM sections. Unfortunately,
             # the device info we can get from the ATDF files is not totally helpful here.
-            if name == main_flash_region.name.lower():
-                memory_cmd += f'    {name:<34} (rx)  : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
-            elif main_bootflash_region  and  name == main_bootflash_region.name.lower():
-                memory_cmd += f'    {name:<34} (rx)  : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
-            elif name == main_ram_region.name.lower():
-                memory_cmd += f'    {name:<34} (rwx) : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
+            if name == main_ddr_region.name.lower():
+                memory_cmd += f'    {name:<32} (lwx!r) : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
+            elif name == main_sram_region.name.lower():
+                memory_cmd += f'    {name:<32} (wx!r)  : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
             else:
                 memory_cmd += f'    {name:<40} : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
 
@@ -297,29 +268,21 @@ def _get_fuse_MEMORY(addr_spaces: list[DeviceAddressSpace],
     return memory_cmd
 
 
-def _get_standard_program_SECTIONS(main_flash_region: DeviceMemoryRegion,
-                                   main_bootflash_region: DeviceMemoryRegion | None) -> str:
+def _get_standard_program_SECTIONS(main_ddr_region: DeviceMemoryRegion,
+                                   main_sram_region: DeviceMemoryRegion) -> str:
     '''Return the standard program sections that would be in a SECTIONS command for Arm linker scripts.
-     
-    The SECTIONS command indicates how object file sections will map into the memory regions from
-    the MEMORY command. The names of the program flash, boot flash, and RAM memory regions are not
-    consistent in the ATDF files for different devices, so the caller will need to provide those.
-    '''
-    vectors_region: str = main_flash_region.name.lower()
-    if main_bootflash_region:
-        vectors_region = main_bootflash_region.name.lower()
 
-    progflash_name: str = main_flash_region.name.lower()
+    The SECTIONS command indicates how object file sections will map into the memory regions from
+    the MEMORY command. The names of the DDR and SRAM memory regions are not consistent in the ATDF
+    files for different devices, so the caller will need to provide those.
+    '''
+    sram_name = main_sram_region.name.lower()
+    ddr_name = main_ddr_region.name.lower()
 
     sections_cmd: str = f'''
-        .vectors :
-        {{
-            KEEP(*(.vectors*))
-            KEEP(*(.reset*))
-        }} > {vectors_region}
-
         .text :
         {{
+            KEEP(*(.reset*))
             *(.text*)
 
             KEEP(*(.init))
@@ -362,7 +325,9 @@ def _get_standard_program_SECTIONS(main_flash_region: DeviceMemoryRegion,
             *(.rodata*)
 
             KEEP(*(.eh_frame*))
-        }} > {progflash_name}
+        }} > {ddr_name}
+
+        PROVIDE(_sfixed = ADDR(.text));
 
         /*
          * SG veneers:
@@ -374,22 +339,40 @@ def _get_standard_program_SECTIONS(main_flash_region: DeviceMemoryRegion,
         {{
             . = ALIGN(32);
             KEEP(*(.gnu.sgstubs))
-        }} > {progflash_name}
+        }} > {ddr_name}
 
         .ARM.extab :
         {{
             *(.ARM.extab* .gnu.linkonce.armextab.*)
-        }} > {progflash_name}
+        }} > {ddr_name}
 
         __exidx_start = .;
         .ARM.exidx :
         {{
             *(.ARM.exidx* .gnu.linkonce.armexidx.*)
-        }} > {progflash_name}
+        }} > {ddr_name}
         __exidx_end = .;
 
         PROVIDE(__stext = LOADADDR(.text));
         PROVIDE(__etext = LOADADDR(.data));
+
+        .relocate :
+        {{
+            . = ALIGN(4);
+            KEEP(*(.vectors*))
+            KEEP(*(.fiq_handler))
+            *(.ramfunc)
+            . = ALIGN(4);
+        }} > {sram_name} > AT {ddr_name}
+
+        PROVIDE(__relocate_start = ADDR(.relocate));
+        PROVIDE(__relocate_end = ADDR(.relocate) + SIZEOF(.relocate) );
+        PROVIDE(__relocate_source = LOADADDR(.relocate));
+        PROVIDE(__relocate_source_end = LOADADDR(.relocate) + SIZEOF(.relocate) );
+        PROVIDE(__relocate_size = __relocate_end - __relocate_start );
+        PROVIDE(__relocate_source_size = __relocate_source_end - __relocate_source );
+        PROVIDE(_srelocate = __relocate_start );
+        PROVIDE(_erelocate = __relocate_end );
 
         '''
 
@@ -397,43 +380,14 @@ def _get_standard_program_SECTIONS(main_flash_region: DeviceMemoryRegion,
     return textwrap.indent(sections_cmd, '    ')
 
 
-def _get_tcm_data_SECTION(tcm_region: DeviceMemoryRegion) -> str:
-    '''Return a section used for the Tightly-Coupled Memory feature some Arm devices have.
-    '''
-    region_name = tcm_region.name.lower()
-
-    if 'itcm' in region_name:
-        section_name: str = 'itcm'
-    elif 'dtcm' in region_name:
-        section_name: str = 'dtcm'
-    else:
-        raise ValueError(f'Unrecognized TCM section name {region_name}')
-
-    section_cmd: str = f'''
-        .{section_name} : ALIGN(4)
-        {{
-            *(.{section_name})
-            *(.{section_name}.*)
-        }} > {region_name}
-
-        PROVIDE(__{section_name}_start = ADDR(.{section_name}));
-        PROVIDE(__{section_name}_end = ADDR(.{section_name}) + SIZEOF(.{section_name}));
-        '''
-
-    section_cmd = textwrap.dedent(section_cmd)
-    return textwrap.indent(section_cmd, '    ')
-
-
-def _get_standard_data_SECTIONS(main_flash_region: DeviceMemoryRegion,
-                                main_ram_region: DeviceMemoryRegion) -> str:
+def _get_standard_data_SECTIONS(main_ddr_region: DeviceMemoryRegion) -> str:
     '''Return the standard data sections that would be in a SECTIONS command for Arm linker scripts.
-     
+
     The SECTIONS command indicates how object file sections will map into the memory regions from
-    the MEMORY command. The names of the program flash, boot flash, and RAM memory regions are not
-    consistent in the ATDF files for different devices, so the caller will need to provide those.
+    the MEMORY command. The names of the DDR and SRAM memory regions are not consistent in the ATDF
+    files for different devices, so the caller will need to provide those.
     '''
-    progflash_name: str = main_flash_region.name.lower()
-    ram_name: str = main_ram_region.name.lower()
+    ddr_name: str = main_ddr_region.name.lower()
 
     sections_cmd: str = f'''
         .data : ALIGN(4)
@@ -445,7 +399,7 @@ def _get_standard_data_SECTIONS(main_flash_region: DeviceMemoryRegion,
 
             KEEP(*(.jcr*))
             . = ALIGN(4);
-        }} > {ram_name} AT > {progflash_name}
+        }} > {ddr_name}
 
         PROVIDE(__data_start = ADDR(.data));
         PROVIDE(__data_source = LOADADDR(.data));
@@ -460,7 +414,7 @@ def _get_standard_data_SECTIONS(main_flash_region: DeviceMemoryRegion,
             *(.tdata .tdata.* .gnu.linkonce.td.*)
             PROVIDE(__data_end = .);
             PROVIDE(__tdata_end = .);
-        }} > {ram_name} AT > {progflash_name}
+        }} > {ddr_name}
 
         PROVIDE(__non_tls_data_end = ADDR(.tdata));
         PROVIDE(__tls_base = ADDR(.tdata));
@@ -482,7 +436,7 @@ def _get_standard_data_SECTIONS(main_flash_region: DeviceMemoryRegion,
             *(.tcommon)
             PROVIDE( __tls_end = . );
             PROVIDE( __tbss_end = . );
-        }} > {ram_name}
+        }} > {ddr_name}
 
         PROVIDE(__bss_start = ADDR(.tbss));
         PROVIDE(__tbss_start = ADDR(.tbss));
@@ -507,7 +461,7 @@ def _get_standard_data_SECTIONS(main_flash_region: DeviceMemoryRegion,
         {{
             . = ADDR(.tbss);
             . = . + SIZEOF(.tbss);
-        }} > {ram_name}
+        }} > {ddr_name}
         */
         
         .bss (NOLOAD) :
@@ -518,7 +472,7 @@ def _get_standard_data_SECTIONS(main_flash_region: DeviceMemoryRegion,
             *(COMMON)
             . = ALIGN(4);
             __bss_end = .;
-        }} > {ram_name}
+        }} > {ddr_name}
 
         PROVIDE(__non_tls_bss_start = ADDR(.bss) );
         PROVIDE(__end = __bss_end );
@@ -533,33 +487,45 @@ def _get_standard_data_SECTIONS(main_flash_region: DeviceMemoryRegion,
             . = ALIGN(8);
             __HeapLimit = .;
             __llvm_libc_heap_limit = .;
-        }} > {ram_name}
+        }} > {ddr_name}
 
-        .stack (ORIGIN({ram_name}) + LENGTH({ram_name}) - __STACK_SIZE - __STACKSEAL_SIZE) (NOLOAD) :
+        .stack (ORIGIN({ddr_name}) + LENGTH({ddr_name}) - __ALL_STACKS_SIZE) (NOLOAD) :
         {{
             . = ALIGN(8);
             __StackLimit = .;
             . = . + __STACK_SIZE;
             . = ALIGN(8);
             __StackTop = .;
-        }} > {ram_name}
+
+            __fiq_stack_limit = .;
+            . = . + __FIQ_STACK_SIZE;
+            . = ALIGN(8);
+            __fiq_stack = .;
+
+            __irq_stack_limit = .;
+            . = . + __IRQ_STACK_SIZE;
+            . = ALIGN(8);
+            __irq_stack = .;
+
+            __svc_stack_limit = .;
+            . = . + __SVC_STACK_SIZE;
+            . = ALIGN(8);
+            __svc_stack = .;
+
+            __abt_stack_limit = .;
+            . = . + __ABT_STACK_SIZE;
+            . = ALIGN(8);
+            __abt_stack = .;
+
+            __und_stack_limit = .;
+            . = . + __UND_STACK_SIZE;
+            . = ALIGN(8);
+            __und_stack = .;
+        }} > {ddr_name}
         PROVIDE(__stack = __StackTop);
 
-        /* ARMv8-M stack sealing:
-            to use ARMv8-M stack sealing uncomment '.stackseal' section
-          */
-        /*
-        .stackseal (ORIGIN({ram_name}) + LENGTH({ram_name}) - __STACKSEAL_SIZE) (NOLOAD) :
-        {{
-            . = ALIGN(8);
-            __StackSeal = .;
-            . = . + 8;
-            . = ALIGN(8);
-        }} > {ram_name}
-        */
-
         /* Check if data + heap + stack exceeds RAM limit */
-        ASSERT(__StackLimit >= __HeapLimit, "RAM region overflowed with stack")
+        ASSERT(__StackLimit >= __HeapLimit, "The stacks are too big to fit into memory")
 
         '''
 

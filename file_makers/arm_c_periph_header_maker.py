@@ -81,7 +81,7 @@ def _get_file_prologue(filename: str) -> str:
     prologue += '/*\n'
     prologue += strings.get_generated_by_string(' * ')
     prologue += ' * \n'
-    prologue += strings.get_cmsis_apache_license(' * ')
+    prologue += strings.get_cmsis_license(' * ', strings.COPYRIGHT_CMSIS)
     prologue += ' */\n\n'
 
     # Include guard
@@ -329,8 +329,6 @@ def _get_register_struct(periph_name: str, group: RegisterGroup, mode: str = '')
         else:
             mem_name = member.name
 
-        # TODO: Maybe remove this repeated name and just add special cases when needed. Right now,
-        #       the only special case is for "SAU" on Ethernet.
         # Get the type and member name based on whether this is a register or subgroup.
         # Registers repeat the peripheral name. This redundant, but needed to avoid conlicting with
         # macros. The group name does not need this.
@@ -338,7 +336,7 @@ def _get_register_struct(periph_name: str, group: RegisterGroup, mode: str = '')
             subgroup_type = _get_base_groupdef_name(periph_name, member.module_name) + '_t'
         else:
             subgroup_type = _get_reg_type_from_size(member.size)
-            mem_name = periph_name + '_' + member.name
+            mem_name = periph_name + '_' + mem_name
 
         if is_union:
             member_str += '    '

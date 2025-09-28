@@ -83,9 +83,21 @@ def get_atdf_paths_from_dir(packs_dir: str) -> list[Path]:
             if '.atdf' != p.suffix:
                 continue
 
+            lname = name.lower()
+
             # All PIC32M devices are MIPS. We are not supporting those right now, so they're easy
             # to filter out here.
-            if name.lower().startswith('pic32m')  or  name.lower().startswith('32m'):
+            if lname.startswith('pic32m')  or  lname.startswith('32m'):
+                continue
+
+            # Skip over 8-bit Atmel parts.
+            if lname.startswith('atmega')  or  lname.startswith('attiny')  or  lname.startswith('avr'):
+                continue
+            if lname.startswith('atxmega')  or  lname.startswith('at90'):
+                continue
+
+            # Skip over 16-bit devices and dsPICs.
+            if lname.startswith('pic24')  or  lname.startswith('24')  or  lname.startswith('dspic'):
                 continue
 
             # Overwrite previous path if one was already found for this device. This avoids
@@ -214,6 +226,8 @@ if '__main__' == __name__:
     peripheral_header_pathname = 'periph'
     fuses_header_pathname = 'fuses'
 
+    big_proc_header_name = 'which_pic32.h'
+
     peripherals_to_make: dict[str, PeripheralGroup] = {}
     device_families: dict[str, list[str]] = {}
 
@@ -230,10 +244,13 @@ if '__main__' == __name__:
 
         # Linker script
         #
+        ld_path = lib_proc_prefix / devinfo.name.lower() / 'default.ld'
         if devinfo.cpu.startswith('cortex-m'):
-            ld_path = lib_proc_prefix / devinfo.name.lower() / 'default.ld'
             with open_for_writing(ld_path) as ld:
                 arm_mcu_linker_script_maker.run(devinfo, ld)
+        else:
+            with open_for_writing(ld_path) as ld:
+                arm_mpu_linker_script_maker.run(devinfo, ld)
 
         # C device-specifc header file
         #
@@ -271,11 +288,10 @@ if '__main__' == __name__:
 
         # C device startup file
         #
+        startup_src_path = lib_proc_prefix / devinfo.name.lower() / 'startup.c'
         if devinfo.cpu.startswith('cortex-m'):
-            startup_src_path = lib_proc_prefix / devinfo.name.lower() / 'startup.c'
             with open_for_writing(startup_src_path) as vec:
-                proc_header_name = 'which_pic32.h'
-                arm_mcu_c_startup_maker.run(proc_header_name, devinfo.interrupts, vec)
+                arm_mcu_c_startup_maker.run(big_proc_header_name, devinfo.interrupts, vec)
 
         # Clang configuration file
         #
@@ -316,7 +332,7 @@ if '__main__' == __name__:
     # Make the all-encompassing processor header file.
     #
     print('Creating big processor header')
-    big_proc_header_path = args.output_dir / 'arm' / 'include' / 'which_pic32.h'
+    big_proc_header_path = args.output_dir / 'arm' / 'include' / big_proc_header_name
     with open_for_writing(big_proc_header_path) as hdr:
         all_devices_header_maker.run(hdr, big_proc_header_path.stem, device_families)
 

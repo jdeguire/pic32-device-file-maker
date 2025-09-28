@@ -47,7 +47,6 @@ _this_copyright: list[str] = [
 
 _this_git_location: str = 'https://github.com/jdeguire/pic32-device-file-maker'
 
-
 _apache_license: list[str] = [
     'SPDX-License-Identifier: Apache-2.0',
     '',
@@ -62,6 +61,33 @@ _apache_license: list[str] = [
     'and limitations under the License'
 ]
 
+_mchp_bsd_license: list[str] = [
+    'Copyright (c) 2025, Microchip Technology Inc. and its subsidiaries ("Microchip")',
+    'All rights reserved.',
+    '',
+    'This software is developed by Microchip Technology Inc. and its subsidiaries ("Microchip").',
+    '',
+    'Redistribution and use in source and binary forms, with or without modification, are',
+    'permitted provided that the following conditions are met:',
+    '',
+    '1.  Redistributions of source code must retain the above copyright notice, this list of',
+    '    conditions and the following disclaimer.',
+    '2.  Redistributions in binary form must reproduce the above copyright notice, this list of',
+    '    conditions and the following disclaimer in the documentation and/or other materials',
+    '    provided with the distribution.',
+    '3.  Microchip\'s name may not be used to endorse or promote products derived from this',
+    '    software without specific prior written permission.',
+    '',
+    'THIS SOFTWARE IS PROVIDED BY MICROCHIP "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING,',
+    'BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR PURPOSE ARE',
+    'DISCLAIMED. IN NO EVENT SHALL MICROCHIP BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,',
+    'EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING BUT NOT LIMITED TO PROCUREMENT OF SUBSTITUTE',
+    'GOODS OR SERVICES; LOSS OF USE, DATA OR PROFITS; OR BUSINESS INTERRUPTION) HOWSOEVER CAUSED AND',
+    'ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE',
+    'OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE',
+    'POSSIBILITY OF SUCH DAMAGE.'
+]
+
 _arm_cmsis6_copyright: str = 'Copyright (c) 2009-2023 Arm Limited. All rights reserved.'
 _mchp_xc32_copyright: str = 'Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.'
 
@@ -71,16 +97,27 @@ _mchp_xc32_adapted_from: str = \
     'Portions were adapted from device code provided by the Microchip MPLAB(R) XC32 toolchain.'
 
 
-def get_cmsis_apache_license(comment_prefix: str, include_mchp: bool = False) -> str:
-    '''Return a string containing an Apache license and other copyright info for Arm's CMSIS.
+COPYRIGHT_DEFAULT = 0
+COPYRIGHT_CMSIS = 1
+COPYRIGHT_MCHP = 2
+
+
+def get_cmsis_license(comment_prefix: str, extra_copyrights: int = COPYRIGHT_DEFAULT) -> str:
+    '''Return a string containing an Apache license that includes copyright info for Arm's CMSIS in
+    addition to copyright info for this project.
 
     The argument is a string that will be prepended to every line of the output so that it is output
     as a comment in whatever language you are using. For example, you would use '// ' for C and C++.
+    There is an additional option to also include Microchip copyright info. Use this when basing
+    code on CMSIS and Microchip Apache licensed stuff.
     '''
-    output: str = comment_prefix + _arm_cmsis6_copyright + '\n'
+    output: str = ''
+    
+    if extra_copyrights & COPYRIGHT_CMSIS:
+        output += comment_prefix + _arm_cmsis6_copyright + '\n'
 
-    if include_mchp:
-        output += _mchp_xc32_copyright + '\n'
+    if extra_copyrights & COPYRIGHT_MCHP:
+        output += comment_prefix + _mchp_xc32_copyright + '\n'
 
     for line in _this_copyright:
         output += comment_prefix + line + '\n'
@@ -90,32 +127,31 @@ def get_cmsis_apache_license(comment_prefix: str, include_mchp: bool = False) ->
     for line in _apache_license:
         output += comment_prefix + line + '\n'
     
-    output += comment_prefix + '\n'
+    if extra_copyrights:
+        output += comment_prefix + '\n'
 
-    output += comment_prefix + _arm_cmsis6_adapted_from + '\n'
+    if extra_copyrights & COPYRIGHT_CMSIS:
+        output += comment_prefix + _arm_cmsis6_adapted_from + '\n'
 
-    if include_mchp:
+    if extra_copyrights & COPYRIGHT_MCHP:
         output += _mchp_xc32_adapted_from + '\n'
 
     return output
 
 
-def get_non_cmsis_apache_license(comment_prefix: str) -> str:
-    '''Return a string containing an Apache license but not copyright info for Arm's CMSIS.
+def get_mchp_bsd_license(comment_prefix: str) -> str:
+    '''Return a string containing a 3-clause BSD license that includes Microchip copyright info.
 
     The argument is a string that will be prepended to every line of the output so that it is output
     as a comment in whatever language you are using. For example, you would use '// ' for C and C++.
     '''
     output: str = ''
 
-    for line in _this_copyright:
+    for line in _mchp_bsd_license:
         output += comment_prefix + line + '\n'
 
-    output += comment_prefix + '\n'
+    output += comment_prefix + _mchp_xc32_adapted_from + '\n'
 
-    for line in _apache_license:
-        output += comment_prefix + line + '\n'
-    
     return output
 
 
