@@ -327,7 +327,7 @@ def _get_standard_program_SECTIONS(main_ddr_region: DeviceMemoryRegion,
             KEEP(*(.eh_frame*))
         }} > {ddr_name}
 
-        PROVIDE(_sfixed = ADDR(.text));
+        PROVIDE(__sfixed = ADDR(.text));
 
         /*
          * SG veneers:
@@ -446,6 +446,8 @@ def _get_standard_data_SECTIONS(main_ddr_region: DeviceMemoryRegion) -> str:
         PROVIDE(__tls_align = MAX(ALIGNOF(.tdata), ALIGNOF(.tbss)) );
         PROVIDE(__arm32_tls_tcb_offset = MAX(8, __tls_align) );
         PROVIDE(__arm64_tls_tcb_offset = MAX(16, __tls_align) );
+
+        PROVIDE(__efixed = __bss_start);
 
         /*
         * The linker special cases .tbss segments which are
