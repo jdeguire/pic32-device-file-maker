@@ -136,14 +136,18 @@ def _get_default_handlers() -> str:
             {}
         }
 
-        // Default Handler For Other Exceptions and Interrupts
-        void __attribute__((weak)) Default_Handler(void)
+        // Testing has shown that we need this indirect jump to Default_Handler() to allow users
+        // to override Default_Handler(). It seems like a function that is aliased cannot be
+        // overridden even if the aliased function is weak.
+        void Default_Handler(void);
+        void Default_Handler_Jump(void)
         {
-            if(_on_default_handler  &&  _on_default_handler())
-            {
-                return;
-            }
-
+            Default_Handler();
+        }
+        
+        // Default Handler For Other Exceptions and Interrupts
+        void __attribute__((noreturn, weak)) Default_Handler(void)
+        {
         #ifdef __DEBUG
             __BKPT(0);
         #endif
@@ -183,7 +187,7 @@ def _get_handler_declarations(interrupts: list[DeviceInterrupt]) -> str:
             continue
 
         func_str = f'{intr.name}_Handler'
-        decl_str += f'void {func_str:<32}(void) __attribute__((weak, alias("Default_Handler")));\n'
+        decl_str += f'void {func_str:<32}(void) __attribute__((weak, alias("Default_Handler_Jump")));\n'
 
     return decl_str
 
