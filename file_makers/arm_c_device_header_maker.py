@@ -322,10 +322,12 @@ def _get_device_fuse_declarations(fuse_periph: PeripheralGroup,
                          + group_ref.offset)
 
             for member in reg_group.members:
+                regtype: str = _get_reg_type_from_size(member.size)
+
                 # There are multiple of some registers, so make declarations for each one.
                 if member.count > 0:
                     for i in range(member.count):
-                        reg_addr = base_addr + member.offset + (4*i)
+                        reg_addr = base_addr + member.offset + (member.size*i)
                         base_name = group_ref.instance_name + '_' + member.name
                         section_name = '.' + base_name.lower() + str(i)
                         variable_name = base_name.upper() + str(i)
@@ -335,7 +337,7 @@ def _get_device_fuse_declarations(fuse_periph: PeripheralGroup,
 
                         addr_macro_str += f'#define {variable_name + '_BASE':<32} (0x{reg_addr:08X}ul)\n'
 
-                        decl_str += f'extern const uint32_t __attribute__((used, retain, section("{section_name}"))) '
+                        decl_str += f'extern const {regtype} __attribute__((used, retain, section("{section_name}"))) '
                         decl_str += variable_name + ';\n'
                 else:
                     reg_addr = base_addr + member.offset
@@ -348,7 +350,7 @@ def _get_device_fuse_declarations(fuse_periph: PeripheralGroup,
 
                     addr_macro_str += f'#define {variable_name + '_BASE':<32} (0x{reg_addr:08X}ul)\n'
 
-                    decl_str += f'extern const uint32_t __attribute__((used, retain, section("{section_name}"))) '
+                    decl_str += f'extern const {regtype} __attribute__((used, retain, section("{section_name}"))) '
                     decl_str += variable_name + ';\n'
 
     return (addr_macro_str +
@@ -402,3 +404,19 @@ def _find_start_of_address_space(addr_spaces: list[DeviceAddressSpace], name: st
             return space.start_addr
 
     raise ValueError(f'Address space {name} could not be found!')
+
+
+def _get_reg_type_from_size(size: int) -> str:
+    '''Return a C99 type to be used with the given size, such as uint32_t for something that is
+    four bytes.
+    '''
+    if size > 8:
+        raise ValueError(f'Invalid size {size} for register type!')
+    if size > 4:
+        return 'uint64_t'
+    elif size > 2:
+        return 'uint32_t'
+    elif size > 1:
+        return 'uint16_t'
+    else:
+        return 'uint8_t'

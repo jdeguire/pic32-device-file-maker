@@ -32,6 +32,7 @@ This is based on the sample linker scripts found in Arm CMSIS 6.
 '''
 
 from device_info import *
+import itertools
 import operator
 from . import strings
 import textwrap
@@ -46,7 +47,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     # First gather info on our memory spaces.
     #
 
-    unique_addr_spaces: list[DeviceAddressSpace] = _remove_overlapping_memory(devinfo.address_spaces)
+    unique_addr_spaces, aliases = _remove_overlapping_memory(devinfo.address_spaces)
 
     # Sort the now-not-overlapping memory regions by starting address.
     # See https://docs.python.org/3/howto/sorting.html
@@ -84,11 +85,13 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
             fuses_periph = periph
             break
 
+
     #
     # Now we can start writing the linker script
     #
 
     # Header block with copyright info.
+    #
     outfile.write('/*\n')
     outfile.write(strings.get_generated_by_string(' * '))
     outfile.write(' * \n')
@@ -96,6 +99,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     outfile.write(' */\n\n')
 
     # MEMORY command
+    #
     outfile.write(_get_memory_symbols(main_flash_region, main_ram_region))
     outfile.write('\n\nMEMORY\n{\n')
     outfile.write(_get_MEMORY_regions(unique_addr_spaces, main_flash_region, main_ram_region,
@@ -105,9 +109,15 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     outfile.write('}\n\nENTRY(Reset_Handler)')
     outfile.write('\n\n')
 
+    # Region aliases
+    #
+    for key, vals in aliases.items():
+        for v in vals:
+            outfile.write(f'REGION_ALIAS("{v.lower()}", {key.lower()});\n')
+
     # SECTIONS commands
     #
-    outfile.write('SECTIONS\n{\n')
+    outfile.write('\nSECTIONS\n{\n')
     outfile.write(_get_standard_program_SECTIONS(main_flash_region, main_bootflash_region))
 
     if itcm_region:
@@ -124,43 +134,57 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     outfile.write('\n}\n')
 
 
-def _remove_overlapping_memory(address_spaces: list[DeviceAddressSpace]) -> list[DeviceAddressSpace]:
-    '''Return a list of address spaces with overlapping regions removed.
+def _remove_overlapping_memory(address_spaces: list[DeviceAddressSpace]) -> (
+    tuple[list[DeviceAddressSpace], dict[str, set[str]]] ):
+    '''Return a list of address spaces with overlapping regions removed and a list of regions that
+    are aliases of one another.
 
     Some devices, like the SAME54 series, have multiple regions with the same starting address. We
     don't want those in our linker script because they will produce linker errors, so we need to 
-    remove them. Do this by finding and keeping only the biggest region of the overlapping spaces.
+    remove them. Do this by finding and keeping only the bigger region of the overlapping spaces.
     To keep us sane, this assumes that any overlapping regions are contained wholly within another
     region. Otherwise, we probably have bigger problems and a really weird memory layout.
+
+    If two regions are the same size and location, then one is an alias of the other. Track and
+    return these aliases separately so we can add these aliases to the linker script later.
     '''
     new_spaces: list[DeviceAddressSpace] = []
+    aliases: dict[str, set[str]] = {}
 
     for addr_space in address_spaces:
         # In Python, both sets and dicts (maps) use curly braces. Any empty pair of braces "{}"
         # creates an empty dict by default, so use 'set()' to create an empty set.
         regions_to_remove: set[str] = set()
 
-        for i in range(0, len(addr_space.mem_regions)):
-            name_i = addr_space.mem_regions[i].name
-            start_i = addr_space.mem_regions[i].start_addr
-            end_i = start_i + addr_space.mem_regions[i].size
+        for i, j in itertools.combinations(addr_space.mem_regions, 2):
+            if i.name in regions_to_remove:
+                continue
 
-            for j in range(i+1, len(addr_space.mem_regions)):
-                name_j = addr_space.mem_regions[j].name
-                start_j = addr_space.mem_regions[j].start_addr
-                end_j = start_j + addr_space.mem_regions[j].size
+            i_end = i.start_addr + i.size
+            j_end = j.start_addr + j.size
 
-                if start_i >= start_j  and  end_i <= end_j:
-                    # Region i is contained in region j, so remove region i.
-                    regions_to_remove.add(name_i)
-                elif start_j >= start_i  and  end_j <= end_i:
-                    # Region j is contained in region i, so remove region j.
-                    regions_to_remove.add(name_j)
+            if i.start_addr == j.start_addr  and  i_end == j_end:
+                # These regions are aliases of one another.
+                if i.name in aliases:
+                    aliases[i.name].add(j.name)
+                else:
+                    aliases[i.name] = {j.name}
+
+                regions_to_remove.add(j.name)
+            elif i.start_addr >= j.start_addr  and  i_end <= j_end:
+                # Region i is contained in region j, so remove region i.
+                regions_to_remove.add(i.name)
+            elif j.start_addr >= i.start_addr  and  j_end <= i_end:
+                # Region j is contained in region i, so remove region j.
+                regions_to_remove.add(j.name)
 
         new_regions: list[DeviceMemoryRegion] = []
 
         for region in addr_space.mem_regions:
-            if region.name not in regions_to_remove:
+            if region.name in regions_to_remove:
+                if region.name in aliases:
+                    del aliases[region.name]
+            else:
                 new_regions.append(region)
 
         new_spaces.append(DeviceAddressSpace(id = addr_space.id,
@@ -168,7 +192,7 @@ def _remove_overlapping_memory(address_spaces: list[DeviceAddressSpace]) -> list
                                              size = addr_space.size,
                                              mem_regions = new_regions))
         
-    return new_spaces
+    return (new_spaces, aliases)
 
 
 def _find_biggest_memory_region(address_spaces: list[DeviceAddressSpace],

@@ -145,12 +145,10 @@ def get_mchp_bsd_license(comment_prefix: str) -> str:
     The argument is a string that will be prepended to every line of the output so that it is output
     as a comment in whatever language you are using. For example, you would use '// ' for C and C++.
     '''
-    output: str = ''
+    output: str = comment_prefix + _mchp_xc32_adapted_from + '\n\n'
 
     for line in _mchp_bsd_license:
         output += comment_prefix + line + '\n'
-
-    output += comment_prefix + _mchp_xc32_adapted_from + '\n'
 
     return output
 

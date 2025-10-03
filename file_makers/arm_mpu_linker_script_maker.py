@@ -33,6 +33,7 @@ script provided with the Microchip XC32 toolchain.
 '''
 
 from device_info import *
+import itertools
 import operator
 from . import strings
 import textwrap
@@ -46,24 +47,27 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     #
     # First gather info on our memory spaces.
     #
-
-    unique_addr_spaces: list[DeviceAddressSpace] = _remove_overlapping_memory(devinfo.address_spaces)
+    address_spaces = _remove_known_problematic_regions(devinfo.address_spaces)
+    unique_addr_spaces, aliases = _remove_overlapping_memory(address_spaces)
 
     # Sort the now-not-overlapping memory regions by starting address.
     # See https://docs.python.org/3/howto/sorting.html
     for addr_space in unique_addr_spaces:
         addr_space.mem_regions.sort(key=operator.attrgetter('start_addr'))
 
-    # Find our main DDR memory region. The ATDF files are not on how these are named nor their
-    # attributes, so for now we will have to just look for known names.
-    main_ddr_region = (_find_region_by_name(unique_addr_spaces, 'ddr_cs', exact=True)       or
-                       _find_region_by_name(unique_addr_spaces, 'ebi_mpddr', exact=True)    or
-                       _find_region_by_name(unique_addr_spaces, 'ddr', exact=False))
+    # Find our main DDR memory region. The ATDF files are not consistent on how these are named nor
+    # their attributes, so for now we will have to just look for known names.
+    main_ddr_region = (_find_region_by_name(unique_addr_spaces, aliases, 'ddr_cs', exact=True)    or
+                       _find_region_by_name(unique_addr_spaces, aliases, 'ebi_mpddr', exact=True) or
+                       _find_region_by_name(unique_addr_spaces, aliases, 'ddr', exact=False))
     if not main_ddr_region:
         raise RuntimeError(f'Failed to find a DDR region for {devinfo.name}')
 
-    main_sram_region = (_find_region_by_name(unique_addr_spaces, 'sram0', exact=True)       or
-                        _find_region_by_name(unique_addr_spaces, 'iram', exact=True))
+    # Do the same for our main SRAM region.
+    main_sram_region = (_find_region_by_name(unique_addr_spaces, aliases, 'sram0', exact=True)    or
+                        _find_region_by_name(unique_addr_spaces, aliases, 'iram', exact=True)     or
+                        _find_region_by_name(unique_addr_spaces, aliases, 'sram', exact=False)    or
+                        _find_region_by_name(unique_addr_spaces, aliases, 'iram', exact=False))
     if not main_sram_region:
         raise RuntimeError(f'Failed to find an SRAM region for {devinfo.name}')
 
@@ -77,20 +81,23 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
             fuses_periph = periph
             break
 
+
     #
     # Now we can start writing the linker script
     #
 
     # Header block with copyright info.
+    #
     outfile.write('/*\n')
     outfile.write(strings.get_generated_by_string(' * '))
     outfile.write(' * \n')
     outfile.write(strings.get_cmsis_license(' * ', strings.COPYRIGHT_CMSIS))
-    outfile.write(' * \n')
+    outfile.write(' */\n/*\n')
     outfile.write(strings.get_mchp_bsd_license(' * '))
     outfile.write(' */\n\n')
 
     # MEMORY command
+    #
     outfile.write(_get_memory_symbols())
     outfile.write('\n\nMEMORY\n{\n')
     outfile.write(_get_MEMORY_regions(unique_addr_spaces, main_ddr_region, main_sram_region))
@@ -99,9 +106,15 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     outfile.write('}\n\nENTRY(Reset_Handler)')
     outfile.write('\n\n')
 
+    # Region aliases
+    #
+    for key, vals in aliases.items():
+        for v in vals:
+            outfile.write(f'REGION_ALIAS("{v.lower()}", {key.lower()});\n')
+
     # SECTIONS commands
     #
-    outfile.write('SECTIONS\n{\n')
+    outfile.write('\nSECTIONS\n{\n')
     outfile.write(_get_standard_program_SECTIONS(main_ddr_region, main_sram_region))
     outfile.write(_get_standard_data_SECTIONS(main_ddr_region))
 
@@ -112,43 +125,82 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     outfile.write('\n}\n')
 
 
-def _remove_overlapping_memory(address_spaces: list[DeviceAddressSpace]) -> list[DeviceAddressSpace]:
-    '''Return a list of address spaces with overlapping regions removed.
+def _remove_known_problematic_regions(address_spaces: list[DeviceAddressSpace]) -> list[DeviceAddressSpace]:
+    '''Remove regions that are known to be problematic from the given address spaces.
+
+    This is basically a hacky workaround to some "overzealous" ATDF files that define a memory region
+    that encompasses other regions we care about. An example of this is the SAMA5D27WLSOM1, which
+    has a IMEMORIES region that overlaps with all of the internal memory regions on the part. We
+    need those regions, so we need to remove the IMEMORIES region.
+    '''
+    new_spaces: list[DeviceAddressSpace] = []
+
+    for addr_space in address_spaces:
+        new_regions: list[DeviceMemoryRegion] = []
+
+        for region in addr_space.mem_regions:
+            if not region.name.lower() == 'imemories':
+                new_regions.append(region)
+
+        new_spaces.append(DeviceAddressSpace(id = addr_space.id,
+                                             start_addr = addr_space.start_addr,
+                                             size = addr_space.size,
+                                             mem_regions = new_regions))
+
+    return new_spaces
+
+
+def _remove_overlapping_memory(address_spaces: list[DeviceAddressSpace]) -> (
+    tuple[list[DeviceAddressSpace], dict[str, set[str]]] ):
+    '''Return a list of address spaces with overlapping regions removed and a list of regions that
+    are aliases of one another.
 
     Some devices, like the SAME54 series, have multiple regions with the same starting address. We
     don't want those in our linker script because they will produce linker errors, so we need to 
-    remove them. Do this by finding and keeping only the biggest region of the overlapping spaces.
+    remove them. Do this by finding and keeping only the bigger region of the overlapping spaces.
     To keep us sane, this assumes that any overlapping regions are contained wholly within another
     region. Otherwise, we probably have bigger problems and a really weird memory layout.
+
+    If two regions are the same size and location, then one is an alias of the other. Track and
+    return these aliases separately so we can add these aliases to the linker script later.
     '''
     new_spaces: list[DeviceAddressSpace] = []
+    aliases: dict[str, set[str]] = {}
 
     for addr_space in address_spaces:
         # In Python, both sets and dicts (maps) use curly braces. Any empty pair of braces "{}"
         # creates an empty dict by default, so use 'set()' to create an empty set.
         regions_to_remove: set[str] = set()
 
-        for i in range(0, len(addr_space.mem_regions)):
-            name_i = addr_space.mem_regions[i].name
-            start_i = addr_space.mem_regions[i].start_addr
-            end_i = start_i + addr_space.mem_regions[i].size
+        for i, j in itertools.combinations(addr_space.mem_regions, 2):
+            if i.name in regions_to_remove:
+                continue
 
-            for j in range(i+1, len(addr_space.mem_regions)):
-                name_j = addr_space.mem_regions[j].name
-                start_j = addr_space.mem_regions[j].start_addr
-                end_j = start_j + addr_space.mem_regions[j].size
+            i_end = i.start_addr + i.size
+            j_end = j.start_addr + j.size
 
-                if start_i >= start_j  and  end_i <= end_j:
-                    # Region i is contained in region j, so remove region i.
-                    regions_to_remove.add(name_i)
-                elif start_j >= start_i  and  end_j <= end_i:
-                    # Region j is contained in region i, so remove region j.
-                    regions_to_remove.add(name_j)
+            if i.start_addr == j.start_addr  and  i_end == j_end:
+                # These regions are aliases of one another.
+                if i.name in aliases:
+                    aliases[i.name].add(j.name)
+                else:
+                    aliases[i.name] = {j.name}
+
+                regions_to_remove.add(j.name)
+            elif i.start_addr >= j.start_addr  and  i_end <= j_end:
+                # Region i is contained in region j, so remove region i.
+                regions_to_remove.add(i.name)
+            elif j.start_addr >= i.start_addr  and  j_end <= i_end:
+                # Region j is contained in region i, so remove region j.
+                regions_to_remove.add(j.name)
 
         new_regions: list[DeviceMemoryRegion] = []
 
         for region in addr_space.mem_regions:
-            if region.name not in regions_to_remove:
+            if region.name in regions_to_remove:
+                if region.name in aliases:
+                    del aliases[region.name]
+            else:
                 new_regions.append(region)
 
         new_spaces.append(DeviceAddressSpace(id = addr_space.id,
@@ -156,10 +208,11 @@ def _remove_overlapping_memory(address_spaces: list[DeviceAddressSpace]) -> list
                                              size = addr_space.size,
                                              mem_regions = new_regions))
         
-    return new_spaces
+    return (new_spaces, aliases)
 
 
 def _find_region_by_name(address_spaces: list[DeviceAddressSpace],
+                         aliases: dict[str, set[str]],
                          name: str,
                          exact: bool) -> DeviceMemoryRegion | None:
     '''Find and return the first region available with the given name.
@@ -168,6 +221,19 @@ def _find_region_by_name(address_spaces: list[DeviceAddressSpace],
     name exactly. Otherwise, this will return the first region containing the name.
     '''
     name = name.lower()
+
+    # Check if our target region is an alias of another region. If so, then we need to look for
+    # that other region instead.
+    for key, vals in aliases.items():
+        found = False
+        for v in vals:
+            if name == v.lower():
+                name = key.lower()
+                found = True
+                break
+
+        if found:
+            break
 
     for addr_space in address_spaces:
         for region in addr_space.mem_regions:
@@ -191,16 +257,16 @@ def _get_memory_symbols() -> str:
     symbol_str: str = f'''
         /* Stack and heap configuration. 
            Modify these using the --defsym option to the linker. */
-        PROVIDE(__STACK_SIZE = 0x10000);
-        PROVIDE(__FIQ_STACK_SIZE = 0x1000);
-        PROVIDE(__IRQ_STACK_SIZE = 0x1000);
-        PROVIDE(__SVC_STACK_SIZE = 0x1000);
-        PROVIDE(__ABT_STACK_SIZE = 0x1000);
-        PROVIDE(__UND_STACK_SIZE = 0x1000);
+        PROVIDE(__STACK_SIZE = 4096);
+        PROVIDE(__FIQ_STACK_SIZE = 512);
+        PROVIDE(__IRQ_STACK_SIZE = 512);
+        PROVIDE(__SVC_STACK_SIZE = 4096);
+        PROVIDE(__ABT_STACK_SIZE = 512);
+        PROVIDE(__UND_STACK_SIZE = 512);
         __ALL_STACKS_SIZE = (__STACK_SIZE + __FIQ_STACK_SIZE + __IRQ_STACK_SIZE + __SVC_STACK_SIZE +
                              __ABT_STACK_SIZE + __UND_STACK_SIZE);
 
-        PROVIDE(__HEAP_SIZE  = 0x10000);
+        PROVIDE(__HEAP_SIZE  = 1024);
         '''
 
     return textwrap.dedent(symbol_str)
@@ -222,11 +288,11 @@ def _get_MEMORY_regions(address_spaces: list[DeviceAddressSpace],
             # We need to add some region attributes to the main flash and RAM sections. Unfortunately,
             # the device info we can get from the ATDF files is not totally helpful here.
             if name == main_ddr_region.name.lower():
-                memory_cmd += f'    {name:<32} (lwx!r) : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
+                memory_cmd += f'    {name:<28} (lwx!r) : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
             elif name == main_sram_region.name.lower():
-                memory_cmd += f'    {name:<32} (wx!r)  : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
+                memory_cmd += f'    {name:<28} (wx!r)  : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
             else:
-                memory_cmd += f'    {name:<40} : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
+                memory_cmd += f'    {name:<36} : ORIGIN = 0x{start:08X}, LENGTH = 0x{size:08X}\n'
 
     return memory_cmd
 
@@ -363,7 +429,7 @@ def _get_standard_program_SECTIONS(main_ddr_region: DeviceMemoryRegion,
             KEEP(*(.fiq_handler))
             *(.ramfunc)
             . = ALIGN(4);
-        }} > {sram_name} > AT {ddr_name}
+        }} > {sram_name} AT > {ddr_name}
 
         PROVIDE(__relocate_start = ADDR(.relocate));
         PROVIDE(__relocate_end = ADDR(.relocate) + SIZEOF(.relocate) );
