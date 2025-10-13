@@ -388,6 +388,10 @@ def _get_standard_program_SECTIONS(main_flash_region: DeviceMemoryRegion,
             KEEP(*(.eh_frame*))
         }} > {progflash_name}
 
+        PROVIDE(__stext = ADDR(.text));
+        PROVIDE(__etext = LOADADDR(.data));
+        PROVIDE(_etext = LOADADDR(.data));
+
         /*
          * SG veneers:
          * All SG veneers are placed in the special output section .gnu.sgstubs. Its start address
@@ -411,10 +415,6 @@ def _get_standard_program_SECTIONS(main_flash_region: DeviceMemoryRegion,
             *(.ARM.exidx* .gnu.linkonce.armexidx.*)
         }} > {progflash_name}
         __exidx_end = .;
-
-        PROVIDE(__stext = LOADADDR(.text));
-        PROVIDE(__etext = LOADADDR(.data));
-
         '''
 
     sections_cmd = textwrap.dedent(sections_cmd)
@@ -495,8 +495,6 @@ def _get_standard_data_SECTIONS(main_flash_region: DeviceMemoryRegion,
         PROVIDE(__tdata_size = SIZEOF(.tdata) );
 
         PROVIDE(__edata = __data_end );
-        PROVIDE(_edata = __data_end );
-        PROVIDE(edata = __data_end );
         PROVIDE(__data_size = __data_end - __data_start );
         PROVIDE(__data_source_size = __data_source_end - __data_source );
 
@@ -546,8 +544,6 @@ def _get_standard_data_SECTIONS(main_flash_region: DeviceMemoryRegion,
 
         PROVIDE(__non_tls_bss_start = ADDR(.bss) );
         PROVIDE(__end = __bss_end );
-        PROVIDE(_end = __bss_end );
-        PROVIDE(end = __bss_end );
         PROVIDE(__bss_size = __bss_end - __bss_start );
 
         .heap (NOLOAD) :

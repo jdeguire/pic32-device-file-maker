@@ -50,8 +50,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: 
     outfile.write('\n\n')
 
     outfile.write('/* ----- Core Configuration Macros ----- */\n')
-    outfile.write(_get_parameter_macros(devinfo.parameters))
-    outfile.write('\n\n')
+    outfile.write(_get_core_config_macros(devinfo.parameters, len(devinfo.interrupts)))
 
     if devinfo.property_groups:
         outfile.write('/* ----- Device Property Macros ----- */\n')
@@ -156,6 +155,24 @@ def _get_interrupt_enum(interrupts: list[DeviceInterrupt]) -> str:
     return ('#ifndef __ASSEMBLER__\n' +
             enum_str +
             '#endif /* ifndef __ASSEMBLER__ */\n')
+
+
+def _get_core_config_macros(config_macros: list[ParameterValue], num_interrupts: int) -> str:
+    '''Return a string containing C macros describing device-level features.
+    '''
+    macros: str = _get_parameter_macros(config_macros)
+
+    # Ensure we always have a 'NUM_IRQ' macro for consistency
+    has_num_irq = False
+    for macro in config_macros:
+        if 'NUM_IRQ' == macro.name.upper():
+            has_num_irq = True
+            break
+
+    if not has_num_irq:
+        macros += f'#define {'NUM_IRQ':<32} ({num_interrupts})\n\n'
+
+    return macros
 
 
 def _get_parameter_macros(parameters: list[ParameterValue], prefix: str = '') -> str:

@@ -290,8 +290,11 @@ if '__main__' == __name__:
         #
         startup_src_path = lib_proc_prefix / devinfo.name.lower() / 'startup.c'
         if devinfo.cpu.startswith('cortex-m'):
-            with open_for_writing(startup_src_path) as vec:
-                arm_mcu_c_startup_maker.run(big_proc_header_name, devinfo.interrupts, vec)
+            with open_for_writing(startup_src_path) as startup:
+                arm_mcu_c_startup_maker.run(big_proc_header_name, devinfo, startup)
+        else:
+            with open_for_writing(startup_src_path) as startup:
+                arm_mpu_c_startup_maker.run(big_proc_header_name, startup)
 
         # Clang configuration file
         #

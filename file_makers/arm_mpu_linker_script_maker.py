@@ -117,11 +117,6 @@ def run(devinfo: DeviceInfo, outfile: IO[str]) -> None:
     outfile.write('\nSECTIONS\n{\n')
     outfile.write(_get_standard_program_SECTIONS(main_ddr_region, main_sram_region))
     outfile.write(_get_standard_data_SECTIONS(main_ddr_region))
-
-    if fuses_periph:
-        outfile.write('\n    /* Device configuration fuses */')
-        outfile.write(_get_fuse_SECTIONS(unique_addr_spaces, periph))
-
     outfile.write('\n}\n')
 
 
@@ -257,16 +252,16 @@ def _get_memory_symbols() -> str:
     symbol_str: str = f'''
         /* Stack and heap configuration. 
            Modify these using the --defsym option to the linker. */
-        PROVIDE(__STACK_SIZE = 4096);
-        PROVIDE(__FIQ_STACK_SIZE = 512);
-        PROVIDE(__IRQ_STACK_SIZE = 512);
-        PROVIDE(__SVC_STACK_SIZE = 4096);
-        PROVIDE(__ABT_STACK_SIZE = 512);
-        PROVIDE(__UND_STACK_SIZE = 512);
+        PROVIDE(__STACK_SIZE     = 64*1024);
+        PROVIDE(__FIQ_STACK_SIZE =  4*1024);
+        PROVIDE(__IRQ_STACK_SIZE = 16*1024);
+        PROVIDE(__SVC_STACK_SIZE =  4*1024);
+        PROVIDE(__ABT_STACK_SIZE =  4*1024);
+        PROVIDE(__UND_STACK_SIZE =  4*1024);
         __ALL_STACKS_SIZE = (__STACK_SIZE + __FIQ_STACK_SIZE + __IRQ_STACK_SIZE + __SVC_STACK_SIZE +
                              __ABT_STACK_SIZE + __UND_STACK_SIZE);
 
-        PROVIDE(__HEAP_SIZE  = 1024);
+        PROVIDE(__HEAP_SIZE      = 64*1024);
         '''
 
     return textwrap.dedent(symbol_str)
@@ -346,6 +341,17 @@ def _get_standard_program_SECTIONS(main_ddr_region: DeviceMemoryRegion,
     ddr_name = main_ddr_region.name.lower()
 
     sections_cmd: str = f'''
+        .vectors :
+        {{
+            KEEP(*(.vectors*))
+            . = ALIGN(4);
+        }} > {sram_name} AT > {ddr_name}
+    
+        PROVIDE(__sfixed = LOADADDR(.vectors));
+        PROVIDE(__vectors_source = LOADADDR(.vectors));
+        PROVIDE(__svectors = ADDR(.vectors));
+        PROVIDE(__evectors = ADDR(.vectors) + SIZEOF(.vectors);
+
         .text :
         {{
             KEEP(*(.reset*))
@@ -393,7 +399,9 @@ def _get_standard_program_SECTIONS(main_ddr_region: DeviceMemoryRegion,
             KEEP(*(.eh_frame*))
         }} > {ddr_name}
 
-        PROVIDE(__sfixed = ADDR(.text));
+        PROVIDE(__stext = ADDR(.text));
+        PROVIDE(__etext = ADDR(.data));
+        PROVIDE(_etext = ADDR(.data));
 
         /*
          * SG veneers:
@@ -418,27 +426,6 @@ def _get_standard_program_SECTIONS(main_ddr_region: DeviceMemoryRegion,
             *(.ARM.exidx* .gnu.linkonce.armexidx.*)
         }} > {ddr_name}
         __exidx_end = .;
-
-        PROVIDE(__stext = LOADADDR(.text));
-        PROVIDE(__etext = LOADADDR(.data));
-
-        .relocate :
-        {{
-            . = ALIGN(4);
-            KEEP(*(.vectors*))
-            KEEP(*(.fiq_handler))
-            *(.ramfunc)
-            . = ALIGN(4);
-        }} > {sram_name} AT > {ddr_name}
-
-        PROVIDE(__relocate_start = ADDR(.relocate));
-        PROVIDE(__relocate_end = ADDR(.relocate) + SIZEOF(.relocate) );
-        PROVIDE(__relocate_source = LOADADDR(.relocate));
-        PROVIDE(__relocate_source_end = LOADADDR(.relocate) + SIZEOF(.relocate) );
-        PROVIDE(__relocate_size = __relocate_end - __relocate_start );
-        PROVIDE(__relocate_source_size = __relocate_source_end - __relocate_source );
-        PROVIDE(_srelocate = __relocate_start );
-        PROVIDE(_erelocate = __relocate_end );
 
         '''
 
@@ -491,8 +478,6 @@ def _get_standard_data_SECTIONS(main_ddr_region: DeviceMemoryRegion) -> str:
         PROVIDE(__tdata_size = SIZEOF(.tdata) );
 
         PROVIDE(__edata = __data_end );
-        PROVIDE(_edata = __data_end );
-        PROVIDE(edata = __data_end );
         PROVIDE(__data_size = __data_end - __data_start );
         PROVIDE(__data_source_size = __data_source_end - __data_source );
 
@@ -514,6 +499,7 @@ def _get_standard_data_SECTIONS(main_ddr_region: DeviceMemoryRegion) -> str:
         PROVIDE(__arm64_tls_tcb_offset = MAX(16, __tls_align) );
 
         PROVIDE(__efixed = __bss_start);
+        PROVIDE(__fixed_size = __efixed - __sfixed);
 
         /*
         * The linker special cases .tbss segments which are
@@ -544,8 +530,6 @@ def _get_standard_data_SECTIONS(main_ddr_region: DeviceMemoryRegion) -> str:
 
         PROVIDE(__non_tls_bss_start = ADDR(.bss) );
         PROVIDE(__end = __bss_end );
-        PROVIDE(_end = __bss_end );
-        PROVIDE(end = __bss_end );
         PROVIDE(__bss_size = __bss_end - __bss_start );
 
         .heap (NOLOAD) :
@@ -599,41 +583,6 @@ def _get_standard_data_SECTIONS(main_ddr_region: DeviceMemoryRegion) -> str:
 
     sections_cmd = textwrap.dedent(sections_cmd)
     return textwrap.indent(sections_cmd, '    ')
-
-
-def _get_fuse_SECTIONS(addr_spaces: list[DeviceAddressSpace], fuses: PeripheralGroup) -> str:
-    '''Create special output sections for the given peripherals assuming they are fuses. This will
-    look through the address spaces to find one to which they belong.
-    '''
-    fuse_str: str = ''
-
-    for inst in fuses.instances:
-        for ref in inst.reg_group_refs:
-            # Find the matching register group for this reference.
-            reg_group: RegisterGroup | None = None
-            for group in fuses.reg_groups:
-                if group.name == ref.module_name:
-                    reg_group = group
-                    break
-
-            if not reg_group:
-                continue
-
-            for member in reg_group.members:
-                # There are multiple of some registers, so make sections for each one.
-                if member.count > 0:
-                    for i in range(member.count):
-                        region_name = ref.instance_name.lower() + '_' + member.name.lower() + str(i)
-                        section_name = '.' + region_name
-
-                        fuse_str += f'\n{section_name:<40} : {{ KEEP(*({section_name})) }} > {region_name}'
-                else:
-                    region_name = ref.instance_name.lower() + '_' + member.name.lower()
-                    section_name = '.' + region_name
-
-                    fuse_str += f'\n{section_name:<40} : {{ KEEP(*({section_name})) }} > {region_name}'
-
-    return textwrap.indent(fuse_str, '    ')
 
 
 def _find_start_of_address_space(addr_spaces: list[DeviceAddressSpace], name: str) -> int:

@@ -39,8 +39,8 @@ import textwrap
 from typing import IO
 
 
-def run(proc_header_name: str, interrupts: list[DeviceInterrupt], outfile: IO[str]) -> None:
-    '''Make a C vector definition file for the given device assuming it is a PIC or SAM Cortex-M
+def run(proc_header_name: str, devinfo: DeviceInfo, outfile: IO[str]) -> None:
+    '''Make a C startup code file for the given device assuming it is a PIC or SAM Cortex-M
     device.
 
     The proc_header_name is the name of a header file this can include to get processor-specific
@@ -52,9 +52,9 @@ def run(proc_header_name: str, interrupts: list[DeviceInterrupt], outfile: IO[st
     outfile.write('\n')
     outfile.write(_get_default_handlers())
     outfile.write('\n\n')
-    outfile.write(_get_handler_declarations(interrupts))
+    outfile.write(_get_handler_declarations(devinfo.interrupts))
     outfile.write('\n\n')
-    outfile.write(_get_vector_table(interrupts))
+    outfile.write(_get_vector_table(devinfo.interrupts))
     outfile.write('\n\n')
 
     outfile.write(_get_startup_feature_functions())
@@ -104,14 +104,6 @@ def _get_file_prologue(proc_header_name: str) -> str:
            */
         extern void __attribute__((weak)) _on_reset(void);
         extern void __attribute__((weak)) _on_bootstrap(void);
-
-        /* Define this to run code upon entering the default interrupt handler. Any interrupts you do
-           not create handlers for call the default handler. Trying to define Default_Handler() yourself
-           like with other interrupt or fault handlers does not seem to work, so define this function
-           instead as a workaround. Return non-zero if the default interrupt handler should return.
-           Otherwise, it will spin forever after this function returns.
-           */
-        extern int __attribute__((weak)) _on_default_handler(void);
         '''
 
     return header + textwrap.dedent(decls)
@@ -297,8 +289,7 @@ def _get_startup_feature_functions() -> str:
     return textwrap.dedent(funcs)
 
 def _get_data_init_functions() -> str:
-    '''Return a string containing functions used to initialize data sections and call C++ 
-    constructors.
+    '''Return a string containing functions used to initialize data sections.
     '''
     funcs: str = '''
         /* Initialize data found in the .data, .tdata, .tbss, and .bss sections. The .tdata and 
