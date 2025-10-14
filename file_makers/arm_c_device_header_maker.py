@@ -50,7 +50,7 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: 
     outfile.write('\n\n')
 
     outfile.write('/* ----- Core Configuration Macros ----- */\n')
-    outfile.write(_get_core_config_macros(devinfo.parameters, len(devinfo.interrupts)))
+    outfile.write(_get_core_config_macros(devinfo))
 
     if devinfo.property_groups:
         outfile.write('/* ----- Device Property Macros ----- */\n')
@@ -65,8 +65,10 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: 
     outfile.write('\n\n')
 
     outfile.write('/* ----- CMSIS Core and Peripherals Header ----- */\n')
-    if devinfo.cpu.startswith('cortex'):
+    if devinfo.cpu.startswith('cortex-m'):
         outfile.write('#include <core_c' + devinfo.cpu.split('-')[1].lower() + '.h>\n')
+    elif devinfo.cpu.startswith('cortex-a'):
+        outfile.write('#include <core_ca.h>\n')
     elif devinfo.cpu.startswith('arm'):
         outfile.write('#include "../arm_legacy/core_arm_legacy.h"\n')
     else:
@@ -157,20 +159,27 @@ def _get_interrupt_enum(interrupts: list[DeviceInterrupt]) -> str:
             '#endif /* ifndef __ASSEMBLER__ */\n')
 
 
-def _get_core_config_macros(config_macros: list[ParameterValue], num_interrupts: int) -> str:
+def _get_core_config_macros(devinfo: DeviceInfo) -> str:
     '''Return a string containing C macros describing device-level features.
     '''
-    macros: str = _get_parameter_macros(config_macros)
+    macros: str = _get_parameter_macros(devinfo.parameters)
 
-    # Ensure we always have a 'NUM_IRQ' macro for consistency
+    # Ensure we have `__FPU_PRSENT` and 'NUM_IRQ' macros as needed.
+    # Whoever made the ATDF files was not consistent in adding these.
     has_num_irq = False
-    for macro in config_macros:
-        if 'NUM_IRQ' == macro.name.upper():
+    has_fpu_present = False
+    for macro in devinfo.parameters:
+        if 'NUM_IRQ' == macro.name:
             has_num_irq = True
-            break
+        elif '__FPU_PRESENT' == macro.name:
+            has_num_irq = True
 
     if not has_num_irq:
-        macros += f'#define {'NUM_IRQ':<32} ({num_interrupts})\n\n'
+        macros += f'#define {'NUM_IRQ':<32} ({len(devinfo.interrupts)})\n\n'
+
+    # All Cortex-A devices have FPUs, but not all define this macro.
+    if not has_fpu_present  and  devinfo.cpu.startswith('cortex-a'):
+        macros += f'#define {'__FPU_PRESENT':<32} (1)\n\n'
 
     return macros
 
@@ -278,29 +287,34 @@ def _get_peripheral_address_macros(peripherals: list[PeripheralGroup],
     decl_macros: str = ''
     array_defs: str = ''
 
+    decl_macros_by_module: dict[str, list[str]] = {}
+
     for periph in peripherals:
         if _peripheral_is_special(periph):
             continue
-
-        decl_macros_list: list[str] = []
 
         for instance in periph.instances:
             for group_ref in instance.reg_group_refs:
                 base_macro_name = group_ref.instance_name.upper() + '_REGS_BASE'
                 decl_macro_name = group_ref.instance_name.upper() + '_REGS'
-                macro_type = group_ref.module_name.lower() + '_registers_t'
+                module_name = group_ref.module_name.lower()
+                macro_type = 'volatile ' + module_name + '_registers_t*'
                 macro_addr = (group_ref.offset + 
                               _find_start_of_address_space(address_spaces, group_ref.addr_space))
 
                 base_macros += f'#define {base_macro_name:<32} (0x{macro_addr:08X}ul)\n'
-                decl_macros += f'#define {decl_macro_name:<32} ((volatile {macro_type}*){base_macro_name})\n'
-                decl_macros_list.append(decl_macro_name)
+                decl_macros += f'#define {decl_macro_name:<32} (({macro_type}){base_macro_name})\n'
 
-        if decl_macros_list:
-            array_type = periph.name.lower() + '_registers_t*'
-            array_name = periph.name.upper() + 'n_REGS[]'
-            array_decl = f'static volatile __attribute__((unused)) {array_type} {array_name}'
-            array_defs += f'{array_decl:<72} = {{{', '.join(decl_macros_list)}}};\n'
+                if module_name in decl_macros_by_module:
+                    decl_macros_by_module[module_name].append(decl_macro_name)
+                else:
+                    decl_macros_by_module[module_name] = [decl_macro_name]
+
+    for module, decls in decl_macros_by_module.items():
+        array_type = module + '_registers_t*'
+        array_name = module.upper() + 'n_REGS[]'
+        array_decl = f'static volatile __attribute__((unused)) {array_type} {array_name}'
+        array_defs += f'{array_decl:<72} = {{{', '.join(decls)}}};\n'
 
     return (base_macros + 
             '\n#ifndef __ASSEMBLER__\n' +

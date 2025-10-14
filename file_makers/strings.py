@@ -134,7 +134,7 @@ def get_cmsis_license(comment_prefix: str, extra_copyrights: int = COPYRIGHT_DEF
         output += comment_prefix + _arm_cmsis6_adapted_from + '\n'
 
     if extra_copyrights & COPYRIGHT_MCHP:
-        output += _mchp_xc32_adapted_from + '\n'
+        output += comment_prefix + _mchp_xc32_adapted_from + '\n'
 
     return output
 

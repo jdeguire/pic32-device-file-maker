@@ -194,16 +194,16 @@ def _get_vector_table() -> str:
            bootloader can determine how much program data it needs to load. This trick is used by
            the onboard boot ROM when loading the second stage bootloader.
         */
-        void __attribute__((section(".vectors"), used, retain, naked) Vectors(void)
+        void __attribute__((section(".vectors"), used, retain, naked)) Vectors(void)
         {{
-            __asm__ volatile("ldr pc, =%0 \n\t"
-                             "ldr pc, =%1 \n\t"
-                             "ldr pc, =%2 \n\t"
-                             "ldr pc, =%3 \n\t"
-                             "ldr pc, =%4 \n\t"
-                             ".word __fixed_size \n\t"
-                             "ldr pc, =%5 \n\t"
-                             "ldr pc, =%6 \n\t"
+            __asm__ volatile("ldr pc, =%0 \\n\\t"
+                             "ldr pc, =%1 \\n\\t"
+                             "ldr pc, =%2 \\n\\t"
+                             "ldr pc, =%3 \\n\\t"
+                             "ldr pc, =%4 \\n\\t"
+                             ".word __fixed_size \\n\\t"
+                             "ldr pc, =%5 \\n\\t"
+                             "ldr pc, =%6 \\n\\t"
                              :  /* No Outputs */
                              :  "i" (Reset_Handler), 
                                 "i" (Undef_Handler),
@@ -348,17 +348,17 @@ def _get_reset_handler() -> str:
                interrupts disabled. These symbols are defined in the linker script and the mask is
                used to keep the stacks 8-byte aligned. */
             __set_mode(CPSR_I_Msk | CPSR_F_Msk | CPSR_M_FIQ);
-            __set_SP((uint32_t)&__fiq_stack & 0x07);
+            __set_SP((uint32_t)&__fiq_stack & ~0x07);
             __set_mode(CPSR_I_Msk | CPSR_F_Msk | CPSR_M_IRQ);
-            __set_SP((uint32_t)&__irq_stack & 0x07);
+            __set_SP((uint32_t)&__irq_stack & ~0x07);
             __set_mode(CPSR_I_Msk | CPSR_F_Msk | CPSR_M_SVC);
-            __set_SP((uint32_t)&__svc_stack & 0x07);
+            __set_SP((uint32_t)&__svc_stack & ~0x07);
             __set_mode(CPSR_I_Msk | CPSR_F_Msk | CPSR_M_ABT);
-            __set_SP((uint32_t)&__abt_stack & 0x07);
+            __set_SP((uint32_t)&__abt_stack & ~0x07);
             __set_mode(CPSR_I_Msk | CPSR_F_Msk | CPSR_M_UND);
-            __set_SP((uint32_t)&__und_stack & 0x07);
+            __set_SP((uint32_t)&__und_stack & ~0x07);
             __set_mode(CPSR_I_Msk | CPSR_F_Msk | CPSR_M_SYS);
-            __set_SP((uint32_t)&__StackTop & 0x07);
+            __set_SP((uint32_t)&__StackTop & ~0x07);
 
             /* The processor is now in "System" mode. */
             
@@ -375,7 +375,7 @@ def _get_reset_handler() -> str:
             /* Remap the built-in SRAM from its normal address to 0x00, which is normally where the
                boot ROM is located. The SRAM is still accessible from its original address. */
         #if defined(AXIMX_REMAP_MASK)
-            AXIMX_REGS->AXIMX_REMAP = AXIMX_REMAP_MASK);
+            AXIMX_REGS->AXIMX_REMAP = AXIMX_REMAP_MASK;
         #elif defined(MATRIX_MRCR_MASK)
             MATRIX_REGS->MATRIX_MRCR = MATRIX_MRCR_MASK;
         #else
