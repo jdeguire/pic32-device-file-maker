@@ -40,4 +40,4 @@ This will use semantic versioning as given in https://semver.org/. Here is the s
   Additional labels for pre-release and build metadata are available as extensions to the MAJOR.MINOR.PATCH format.
 '''
 
-FILE_MAKER_VERSION: str = "0.3.0"
+FILE_MAKER_VERSION: str = "0.4.0"
