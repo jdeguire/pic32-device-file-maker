@@ -71,10 +71,44 @@ from pathlib import Path
 import shutil
 
 
+def get_pack_version_from_path(atdf_path: Path) -> int:
+    '''Create a pack version in the given path into an integer.
+
+    The version is assumed to be in the path. This will walk up the path looking for it. If the path
+    is from a Microchip pack, the version is three or four levels up from the ATDF file. The version
+    is encoded as "x.y.z", which this will turn into
+    
+        (x * 100_000_000) + (y * 10_000) + z.
+
+    This will return -1 if the path does not appear to have a version. That way, any valid version
+    will "win" over the invalid one.
+    '''
+    for path_part in reversed(atdf_path.parts):
+        ver_parts = path_part.split('.')
+
+        # Look for a version formatted as 'x.y.z'.
+        if len(ver_parts) != 3:
+            continue
+
+        try:
+            ver = 100_000_000 * int(ver_parts[0])  +  10_000 * int(ver_parts[1])  +  int(ver_parts[2])
+            return ver
+        except ValueError:
+            # Could not be parsed, so just move on.
+            continue
+
+    return 0
+
+
 def get_atdf_paths_from_dir(packs_dir: str) -> list[Path]:
     '''Return a list of Path objects in which each Path points to a file with the '.atdf' extension.
+
+    This will try to find the latest version of an ATDF file for each device. This assumes that the
+    given directory is the top level of a Microchip packs directory. Microchip encodes the version
+    of a particular pack in the directory structure. This should still work if no version is found,
+    but a versioned pack will win out over a non-versioned directory.
     '''
-    atdf_paths = {}
+    atdf_paths: dict[str, tuple[Path, int]] = {}
     packs_path = Path(packs_dir)
     for rootname, _, filenames in os.walk(packs_path):
         for name in filenames:
@@ -100,11 +134,21 @@ def get_atdf_paths_from_dir(packs_dir: str) -> list[Path]:
             if lname.startswith('pic24')  or  lname.startswith('24')  or  lname.startswith('dspic'):
                 continue
 
-            # Overwrite previous path if one was already found for this device. This avoids
-            # duplicate entries when multiple pack versions are installed.
-            atdf_paths[name] = p
+            # Overwrite previous path if one was already found for this device and it is an older
+            # version that what we just found.
+            if name in atdf_paths:
+                pack_ver = get_pack_version_from_path(p)
+                if pack_ver > atdf_paths[name][1]:
+                    atdf_paths[name] = (p, pack_ver)
+            else:
+                atdf_paths[name] = (p, get_pack_version_from_path(p))
 
-    return list(atdf_paths.values())
+
+    path_list: list[Path] = []
+    for _, values in atdf_paths.items():
+        path_list.append(values[0])
+
+    return path_list
 
 
 def parse_atdf_file_at_path(atdf_path: Path) -> DeviceInfo:
