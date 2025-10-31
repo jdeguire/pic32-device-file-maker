@@ -1,4 +1,7 @@
 # atdf-device-file-maker
+_This project used to be called "pic32-device-file-maker", but I changed it to avoid any trademark
+concerns with using "PIC" in the name._
+
 Generate device-specifc files for PIC32 and SAM device (ARM-only for now), like linker scripts
 and header files.
 
