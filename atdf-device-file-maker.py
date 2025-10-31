@@ -226,13 +226,13 @@ def get_command_line_arguments() -> argparse.Namespace:
     If an error occurs or a command line arugment requests help text or version info, then this will
     exit the program after printing the appropriate info instead of returning.
     '''
-    epilog_str: str = 'The files are put into a "pic32-device-files" subdirectory of the output directory.'
+    epilog_str: str = 'The files are put into a "atdf-device-files" subdirectory of the output directory.'
 
-    version_str = 'PIC32 Device File Maker ' + version.FILE_MAKER_VERSION
+    version_str = 'ATDF Device File Maker ' + version.FILE_MAKER_VERSION
     version_str += f' ({strings.get_this_git_repo_location()})'
 
     parser = argparse.ArgumentParser(
-                            description='Creates device-specific files to support PIC32 devices',
+                            description='Creates device-specific files to support Microchip Tech devices',
                             epilog=epilog_str,
                             formatter_class=argparse.RawDescriptionHelpFormatter)
 
@@ -259,7 +259,7 @@ if '__main__' == __name__:
 
     # Put our output in a subdirectory specific to this script. This should prevent someone from
     # accidentally blowing away their home directory by making that their output directory.
-    args.output_dir = args.output_dir / 'pic32-device-files'
+    args.output_dir = args.output_dir / 'atdf-device-files'
 
     if os.path.exists(args.output_dir):
         shutil.rmtree(args.output_dir)
@@ -270,7 +270,7 @@ if '__main__' == __name__:
     peripheral_header_pathname = 'periph'
     fuses_header_pathname = 'fuses'
 
-    big_proc_header_name = 'which_pic32.h'
+    big_proc_header_name = 'which_device.h'
 
     peripherals_to_make: dict[str, PeripheralGroup] = {}
     device_families: dict[str, list[str]] = {}

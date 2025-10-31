@@ -1,5 +1,5 @@
-# This app outputs a directory called 'pic32-device-files', which we want to ignore for now.
-pic32-device-files/
+# This app outputs a directory called 'atdf-device-files', which we want to ignore for now.
+atdf-device-files/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

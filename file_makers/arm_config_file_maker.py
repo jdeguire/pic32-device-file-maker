@@ -179,7 +179,8 @@ def _get_target_macros(devinfo: DeviceInfo) -> dict[str, str]:
 
     These include macros for the device name, series, architecture, and so on. The key of the dict
     is the macro name and the value is the macro value. The value can be empty for macros with no
-    explicit value.
+    explicit value. Feature macros will start with "__PIC32" to maintain some compatibility with
+    similar macros defined by Microchip's XC32 toolchain.
     '''
     macros: dict[str, str] = {'__PIC32' : '',
                               '__PIC32__' : ''}
