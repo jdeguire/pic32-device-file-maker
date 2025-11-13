@@ -78,7 +78,7 @@ def get_pack_version_from_path(atdf_path: Path) -> int:
     is from a Microchip pack, the version is three or four levels up from the ATDF file. The version
     is encoded as "x.y.z", which this will turn into
     
-        (x * 100_000_000) + (y * 10_000) + z.
+        (x * 10_000_000_000) + (y * 100_000) + z.
 
     This will return -1 if the path does not appear to have a version. That way, any valid version
     will "win" over the invalid one.
@@ -91,7 +91,9 @@ def get_pack_version_from_path(atdf_path: Path) -> int:
             continue
 
         try:
-            ver = 100_000_000 * int(ver_parts[0])  +  10_000 * int(ver_parts[1])  +  int(ver_parts[2])
+            ver = (10_000_000_000 * int(ver_parts[0])  +
+                   100_000 * int(ver_parts[1])  +
+                   int(ver_parts[2]))
             return ver
         except ValueError:
             # Could not be parsed, so just move on.
