@@ -203,6 +203,10 @@ def _get_target_macros(devinfo: DeviceInfo) -> dict[str, str]:
         macros[f'__AT{name}'] = ''
         macros[f'__{name[:4]}__'] = ''
         macros[f'__{name[:4]}'] = ''
+        macros[f'__{name[:5]}__'] = ''
+        macros[f'__{name[:5]}'] = ''
+        macros[f'__{name[:6]}__'] = ''
+        macros[f'__{name[:6]}'] = ''
     elif name.startswith('PIC32'):
         # Add macros with "PIC32C" and "PIC32CX" in them, as an example. These might already be
         # covered by the family and series above, in which case these will effectively do nothing.

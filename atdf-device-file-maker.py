@@ -301,7 +301,7 @@ if '__main__' == __name__:
 
         for periph in devinfo.peripherals:
             # TODO: Why do fuses need special handling here? Since we are now checking peripheral
-            #       definitions oursevles, why couldn't we just have "fuses_0.h", "fuses_1.h", etc.?
+            #       definitions ourselves, why couldn't we just have "fuses_0.h", "fuses_1.h", etc.?
             # TODO: Should we group peripherals by family, like PIC32CZ or SAMG? If so, make a function
             #       to extract those faimlies from the device name.
             if 'fuses' == periph.name.lower():

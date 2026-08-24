@@ -101,9 +101,6 @@ def run(devinfo: DeviceInfo, outfile: IO[str], periph_prefix: str, fuse_prefix: 
 
     # Fuses need special handling from other peripherals. This assumes there is at most one fuse
     # peripheral called FUSES, though that peripheral can have multiple groups.
-    # TODO: If we stop handling fuses differently from other peripherals (see the TODO in the main
-    #       file), then this can be done in the fuse peripheral header rather than in here.
-    #       Hmmm, actually the declarations could move to the fuse peripheral header either way.
     # TODO: Maybe we should add macros for the fuse section names so that assemblers can use those
     #       with the ".section" directive.
     if fuses_peripheral:

@@ -544,6 +544,7 @@ def _get_standard_data_SECTIONS(main_flash_region: DeviceMemoryRegion,
 
         PROVIDE(__non_tls_bss_start = ADDR(.bss) );
         PROVIDE(__end = __bss_end );
+        PROVIDE(_end = __bss_end );
         PROVIDE(__bss_size = __bss_end - __bss_start );
 
         .heap (NOLOAD) :
