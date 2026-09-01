@@ -174,8 +174,7 @@
 #if __ARM_ARCH >= 6
 #  define __ISB()         __set_PFBF(0)
 #else
-#  define __ISB()         __ASM volatile("# PC load to flush prefetch \n\t"   \
-                                         "ldr pc, =1f  \n"                    \
+#  define __ISB()         __ASM volatile("ldr pc, =1f  \n"                    \
                                          "1:          \n\t"                   \
                                          "nop         \n\t"                   \
                                          ::: "memory")
@@ -1077,9 +1076,13 @@ __STATIC_INLINE void __FPU_Enable(void)
     : : : "cc", "r2"
   );
 
-  // Initialise FPSCR to a known state
+  // Initialize FPSCR to a known state while not modifying reserved bits
   const uint32_t fpscr = __get_FPSCR();
-  __set_FPSCR(fpscr & 0x00086060ul);
+#  if __ARM_ARCH >= 6
+  __set_FPSCR(fpscr & 0x0C086060ul);
+#  else
+  __set_FPSCR(fpscr & 0x0E08E0E0ul);
+#  endif
 #endif /* __FPU_PRESENT == 1 */
 }
 
