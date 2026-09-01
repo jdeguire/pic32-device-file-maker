@@ -464,11 +464,20 @@ __STATIC_FORCEINLINE void __set_ICIALLU(uint32_t value)
 
 /** \brief  Set ICIMVAC
 
-  Instruction Cache Invalidate
+  Instruction Cache Invalidate (MVA)
  */
 __STATIC_FORCEINLINE void __set_ICIMVAC(uint32_t value)
 {
   __set_CP(15, 0, value, 7, 5, 1);
+}
+
+/** \brief  Set ICISW
+
+  Invalidate ICache single entry (Set/Way)
+ */
+__STATIC_FORCEINLINE void __set_ICISW(uint32_t value)
+{
+  __set_CP(15, 0, value, 7, 5, 2);
 }
 
 /** \brief  Set PFBF
@@ -497,15 +506,6 @@ __STATIC_FORCEINLINE void __set_ISB(uint32_t value)
 __STATIC_FORCEINLINE void __set_BPIALL(uint32_t value)
 {
   __set_CP(15, 0, value, 7, 5, 6);
-}
-
-/** \brief  Set ICISW
-
-  Invalidate ICache single entry (Set/Way)
- */
-__STATIC_FORCEINLINE void __set_ICISW(uint32_t value)
-{
-  __set_CP(15, 0, value, 7, 6, 2);
 }
 
 /** \brief  Set DCIALLU
