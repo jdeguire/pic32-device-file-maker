@@ -819,7 +819,7 @@ __STATIC_FORCEINLINE uint32_t __get_FCSECTX(void)
  */
 __STATIC_FORCEINLINE void __set_FCSECTX(uint32_t ctx)
 {
-  __set_CP(15, 0, ctx, 13, 0, 0);
+  __set_CP(15, 0, ctx, 13, 0, 1);
 }
 
 
